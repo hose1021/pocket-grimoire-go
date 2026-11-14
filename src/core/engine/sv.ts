@@ -321,9 +321,9 @@ function makeStep(
     extra.roleChoices = GOOD_ROLES(state);
   }
   if (roleId === "pithag") {
-    extra.roleChoices = (state.script && state.script.roles ? state.script.roles : []).filter(
-      (id) => !holderOf(state, id),
-    );
+    // The Storyteller may name a character already in play: the rule says
+    // nothing happens, so every script character stays selectable.
+    extra.roleChoices = (state.script && state.script.roles ? state.script.roles : []).slice();
   }
   return {
     key: svStepKey(state, index, roleId, actor ? actor.id : null),

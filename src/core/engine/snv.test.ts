@@ -737,6 +737,10 @@ test("the Pit-Hag choosing a character already in play records that nothing happ
   const state = make({ 1: "clockmaker", 6: "pithag", 7: "fanggu" }, { count: 7 });
   laterNight(state);
   const step = stepFor(state, "pithag");
+  assert.ok(
+    (step.roleChoices || []).includes("clockmaker"),
+    "a character already in play stays selectable so the no-op is recordable",
+  );
   const target = "2";
   const previous = state.players[target].roleId;
 
