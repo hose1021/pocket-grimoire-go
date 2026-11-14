@@ -62,17 +62,19 @@ export async function seedGame(
 ) {
   const result = await page.evaluate(
     async ({ edition, assignment, bluffs, start, twin, drunkShown, lunaticShown }) => {
+      // "sv" is a common shorthand; the engine routes only on "snv".
       const { model, engine, store, rules } = await window.PG_MODULES();
       const seats = Object.keys(assignment);
       const game = model.createGame(seats.length);
-      if (edition !== "tb") {
-        const all = edition === "bmr" ? rules.BMR_ALL : rules.SNV_ALL;
-        game.scriptId = edition;
+      const scriptEdition = edition === "sv" ? "snv" : edition;
+      if (scriptEdition !== "tb") {
+        const all = scriptEdition === "bmr" ? rules.BMR_ALL : rules.SNV_ALL;
+        game.scriptId = scriptEdition;
         game.script = {
           ...game.script,
-          id: edition,
-          name: edition === "bmr" ? "Bad Moon Rising" : "Sects and Violets",
-          edition,
+          id: scriptEdition,
+          name: scriptEdition === "bmr" ? "Bad Moon Rising" : "Sects and Violets",
+          edition: scriptEdition,
           roles: [...all],
         };
       }
