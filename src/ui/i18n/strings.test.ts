@@ -69,6 +69,95 @@ test("storyteller step guidance is semantically translated in ru, en and az", ()
   setUiLang("ru");
 });
 
+const NOTE_KEYS = [
+  "note.bmr.sailor",
+  "note.bmr.courtier",
+  "note.bmr.devilAdvocateFirst",
+  "note.bmr.devilAdvocateOther",
+  "note.bmr.pukka",
+  "note.bmr.grandmotherDeath",
+  "note.bmr.innkeeper",
+  "note.bmr.gambler",
+  "note.bmr.lunatic",
+  "note.bmr.exorcist",
+  "note.bmr.zombuul",
+  "note.bmr.shabaloth",
+  "note.bmr.po",
+  "note.bmr.assassin",
+  "note.bmr.godfather",
+  "note.bmr.gossip",
+  "note.bmr.professor",
+  "note.bmr.tinker",
+  "note.bmr.moonchild",
+  "note.abilityFailed",
+  "note.pukkaSuspended",
+  "note.exorcistBlocked",
+  "note.characterChanged",
+  "note.abilityUnused",
+  "note.philosopherOwner",
+  "note.philosopherAbility",
+  "note.characterBecame",
+  "note.characterSwapPoisoned",
+  "note.characterSwap",
+  "note.klutzNotEvil",
+  "note.klutzEvil",
+  "note.madness",
+  "note.actorDied",
+  "note.poisoned",
+  "note.protected",
+  "note.butlerMaster",
+  "note.impKilled",
+  "note.finished",
+  "note.skipped",
+  "note.skippedNone",
+  "note.demonChanged",
+  "note.roleChangedDemon",
+  "ui.noNomination",
+  "ui.zombuulExecution",
+  "ui.tinkerDecision",
+  "ui.tinkerHint",
+  "ui.tinkerDies",
+  "ui.tinkerLives",
+  "ui.drunkMaskHint",
+  "winReason.demon-executed",
+  "backToTableConfirm",
+];
+
+test("engine notes and the new console copy are translated in ru, en and az", () => {
+  const missing = missingTranslations();
+  for (const lang of ["en", "ru", "az"]) {
+    assert.deepEqual(
+      missing[lang].filter((key) => NOTE_KEYS.includes(key)),
+      [],
+      `${lang} is missing an engine note key`,
+    );
+  }
+  const problems = translationProblems().filter((problem) =>
+    NOTE_KEYS.some((key) => problem.endsWith(":" + key)),
+  );
+  assert.deepEqual(problems, []);
+  const vars = {
+    name: "A",
+    names: "A, B",
+    role: "R",
+    owner: "O",
+    actor: "A",
+    target: "T",
+    first: "F",
+    second: "S",
+    reason: "R",
+  };
+  for (const lang of ["en", "ru", "az"]) {
+    setUiLang(lang);
+    for (const key of NOTE_KEYS) {
+      const text = t(key, vars);
+      assert.ok(text && text !== key, `${lang}:${key} is translated`);
+      assert.doesNotMatch(text, /\{\w+\}/, `${lang}:${key} leaves a placeholder`);
+    }
+  }
+  setUiLang("ru");
+});
+
 const TABLE_LABEL_KEYS = [
   "execute",
   "threshold",

@@ -250,6 +250,9 @@ export interface NightStep {
   canKill?: boolean;
   canResurrect?: boolean;
   note?: string | null;
+  /** Locale-neutral console key; `note` stays the persisted fallback. */
+  noteKey?: string | null;
+  noteVars?: Record<string, string | number> | null;
   targetIds?: string[];
   done?: boolean;
   pending?: PendingStep | null;

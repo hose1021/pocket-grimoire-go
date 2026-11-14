@@ -256,10 +256,24 @@ export function targetNames(
     .join(", ");
 }
 
+/** The over-panel key for the actual win cause, not just its reason code. */
+export function winReasonKey(state: GameState, winner: { reason: string } | null): string {
+  if (!winner) return "";
+  if (winner.reason === "demon-dead") {
+    const execution = state.day?.execution;
+    const executed = execution ? playerById(state, execution.playerId) : null;
+    if (executed && roleTeam(executed.roleId || "") === "demon") {
+      return "winReason.demon-executed";
+    }
+  }
+  return "winReason." + winner.reason;
+}
+
 export function causeText(cause: string, t: Translate): string {
   return (
     {
       execution: t("ui.execution"),
+      ability: t("ui.ability"),
       demon: t("ui.demon"),
       slayer: t("ui.slayer"),
       virgin: t("ui.virgin"),
@@ -287,7 +301,10 @@ export function infoText(
 ): string {
   if (!info) return t("none");
   const roleName = (id: string | null | undefined) => roleNameOf(id, roles);
-  if (info.kind === "note") return info.text || "";
+  if (info.kind === "note") {
+    if (step.noteKey) return t(step.noteKey, step.noteVars ?? undefined);
+    return info.text || "";
+  }
   if (info.kind === "one-of-two") {
     if (info.zero) return t("ui.zero");
     if (!info.roleId) return info.text || t("ui.notSet");

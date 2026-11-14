@@ -3,6 +3,7 @@
 import {
   activeEffects,
   attackNeedsRedirect,
+  bmrDrunkEffect,
   butlerMaster,
   characterChoices,
   currentStep,
@@ -19,7 +20,7 @@ import {
   stepProgress,
   vigormortisPoisonChoices,
 } from "../../core/engine/index.ts";
-import { livingPlayers, orderedPlayers } from "../../core/model/state.ts";
+import { livingPlayers, orderedPlayers, playerById } from "../../core/model/state.ts";
 import type { Effect, GameState, NightStep, RoleId } from "../../core/model/types.ts";
 import type { InfoResult } from "../../core/engine/index.ts";
 
@@ -119,18 +120,44 @@ export function mayorRedirectNeeded(state: GameState, step: NightStep, targetId:
 /** The effect, poison, protection and butler facts of one seat. */
 export interface SeatProjection {
   impaired: boolean;
+  drunk: boolean;
+  poisoned: boolean;
   protected: boolean;
   safeFromAttack: boolean;
   butlerMasterId: string | null;
+  registeredDead: boolean;
+  scheduledDeath: boolean;
+  drunkSourceRoleId: RoleId | null;
+  poisonSourceRoleId: RoleId | null;
+  protectionSourceRoleId: RoleId | null;
+}
+
+function sourceRoleOf(state: GameState, sourceId: string | null | undefined): RoleId | null {
+  if (!sourceId) return null;
+  const player = playerById(state, String(sourceId));
+  return player && player.roleId ? player.roleId : null;
 }
 
 export function seatProjection(state: GameState, playerId: string): SeatProjection {
   const protection = protectionFor(state, playerId);
+  const drunkEffect = bmrDrunkEffect(state, playerId);
+  const effects = activeEffects(state, null).filter(
+    (effect) => effect.targetId != null && String(effect.targetId) === playerId,
+  );
+  const poisonEffect = effects.find((effect) => effect.kind === "poison");
+  const player = playerById(state, playerId);
   return {
     impaired: isImpaired(state, playerId),
+    drunk: Boolean(drunkEffect),
+    poisoned: !drunkEffect && isImpaired(state, playerId),
     protected: Boolean(protection),
     safeFromAttack: Boolean(protection) || soldierSafe(state, playerId),
     butlerMasterId: butlerMaster(state, playerId),
+    registeredDead: Boolean(player && player.registeredDead),
+    scheduledDeath: effects.some((effect) => effect.kind === "pukka-death"),
+    drunkSourceRoleId: sourceRoleOf(state, drunkEffect && drunkEffect.sourceId),
+    poisonSourceRoleId: sourceRoleOf(state, poisonEffect && poisonEffect.sourceId),
+    protectionSourceRoleId: sourceRoleOf(state, protection && protection.sourceId),
   };
 }
 

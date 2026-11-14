@@ -2042,6 +2042,34 @@
           "overflow-x": "visible",
           "overflow-y": "visible"
         },
+        "#screen button[disabled]": {
+          "display": "flex",
+          "position": "static",
+          "width": "44px",
+          "height": "44px",
+          "margin": "0px",
+          "padding": "0px",
+          "gap": "normal",
+          "grid-template-columns": "none",
+          "flex-direction": "row",
+          "font-family": "Inter, system-ui, sans-serif",
+          "font-size": "14px",
+          "font-weight": "400",
+          "line-height": "20.3px",
+          "letter-spacing": "normal",
+          "text-transform": "none",
+          "text-align": "center",
+          "color": "rgb(138, 150, 156)",
+          "background-color": "rgba(0, 0, 0, 0)",
+          "background-image": "none",
+          "border-top-width": "1px",
+          "border-top-color": "rgb(55, 70, 79)",
+          "border-top-left-radius": "4px",
+          "box-shadow": "none",
+          "opacity": "0.4",
+          "overflow-x": "visible",
+          "overflow-y": "visible"
+        },
         "#screen a": {
           "display": "flex",
           "position": "static",
@@ -2142,6 +2170,10 @@
           "transition-duration": "0s"
         },
         "#screen button:not([data-app-bar-toggle])": {
+          "animation-duration": "0s",
+          "transition-duration": "0s"
+        },
+        "#screen button[disabled]": {
           "animation-duration": "0s",
           "transition-duration": "0s"
         },
@@ -2321,6 +2353,34 @@
           "overflow-x": "visible",
           "overflow-y": "visible"
         },
+        "#screen button[disabled]": {
+          "display": "flex",
+          "position": "static",
+          "width": "44px",
+          "height": "44px",
+          "margin": "0px",
+          "padding": "0px",
+          "gap": "normal",
+          "grid-template-columns": "none",
+          "flex-direction": "row",
+          "font-family": "Inter, system-ui, sans-serif",
+          "font-size": "14px",
+          "font-weight": "400",
+          "line-height": "20.3px",
+          "letter-spacing": "normal",
+          "text-transform": "none",
+          "text-align": "center",
+          "color": "rgb(138, 150, 156)",
+          "background-color": "rgba(0, 0, 0, 0)",
+          "background-image": "none",
+          "border-top-width": "1px",
+          "border-top-color": "rgb(55, 70, 79)",
+          "border-top-left-radius": "4px",
+          "box-shadow": "none",
+          "opacity": "0.4",
+          "overflow-x": "visible",
+          "overflow-y": "visible"
+        },
         "#screen a": {
           "display": "flex",
           "position": "static",
@@ -2421,6 +2481,10 @@
           "transition-duration": "0s"
         },
         "#screen button:not([data-app-bar-toggle])": {
+          "animation-duration": "0s",
+          "transition-duration": "0s"
+        },
+        "#screen button[disabled]": {
           "animation-duration": "0s",
           "transition-duration": "0s"
         },

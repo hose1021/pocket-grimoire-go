@@ -824,6 +824,27 @@ test("the Zombuul survives its first death but registers as dead", () => {
   assert.equal(zombuulLog?.consequence, "prevented");
 });
 
+test("the Zombuul kills at night when nobody died today", () => {
+  const state = make(
+    {
+      1: "chambermaid",
+      2: "courtier",
+      3: "sailor",
+      4: "gossip",
+      5: "devilsadvocate",
+      6: "zombuul",
+      7: "fool",
+    },
+    { count: 8 },
+  );
+  nextNight(state);
+  const step = state.night.queue.find((candidate) => candidate.roleId === "zombuul");
+  assert.ok(step, "the Zombuul wakes after a day without a death");
+  assert.equal(completeStep(state, step.key, { targetIds: ["1"] }).ok, true);
+  assert.equal(recordBmrOutcome(state, step.key, { deathIds: ["1"] }).ok, true);
+  assert.equal(state.players["1"].alive, false, "the chosen player dies");
+});
+
 test("the Mastermind extends the game by one day after a Demon execution", () => {
   const state = make(
     {
@@ -1311,7 +1332,10 @@ test("the Grandmother stores the grandchild and dies when the Demon kills them",
   completeStep(state, po.key, { targetIds: ["1"] });
   recordBmrOutcome(state, po.key, { deathIds: ["1"] });
   const extra = state.night.queue.find(
-    (step) => step.roleId === "grandmother" && step.note && step.note.includes("Demon"),
+    (step) =>
+      step.roleId === "grandmother" &&
+      (step.noteKey === "note.bmr.grandmotherDeath" ||
+        Boolean(step.note && step.note.includes("Demon"))),
   );
   assert.ok(extra, "the Grandmother's death step is inserted");
   const chambermaid = state.night.queue.find((step) => step.roleId === "chambermaid");

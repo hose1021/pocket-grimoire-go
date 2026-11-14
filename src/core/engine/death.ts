@@ -119,6 +119,7 @@ export function becomeDemon(
     step.done = true;
     step.skipped = true;
     step.note = "Роль изменилась до шага: теперь это Демон.";
+    step.noteKey = "note.roleChangedDemon";
   }
   player.reminders = Array.isArray(player.reminders) ? player.reminders : [];
   if (!player.reminders.includes("Демон")) player.reminders.push("Демон");

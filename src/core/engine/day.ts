@@ -591,6 +591,15 @@ export function executeByDecision(state: GameState, playerId: string, options: D
   const death = executePlayer(state, playerId, cause, at, options);
   state.day.execution.deathId = death ? death.id : null;
   checkWin(state);
+  if (
+    !state.winner &&
+    isBmrScript(state.script) &&
+    state.mastermind?.active &&
+    state.mastermind.extraDay
+  ) {
+    const good = realTeamOf(player) !== "evil";
+    setWinner(state, good ? "evil" : "good", "mastermind");
+  }
   addLog(state, {
     kind: "execution",
     title: "Казнь: " + (player.name || "Игрок " + player.seat),

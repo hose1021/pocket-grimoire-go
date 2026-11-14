@@ -1,7 +1,7 @@
 // The host table: one ellipse of seats around a centre hub. The screen owns
 // every action; a seat only reports the target choice, and the hub reads the
 // published state.
-import { livingPlayers, orderedPlayers, playerById } from "../../../core/model/state.ts";
+import { orderedPlayers, playerById } from "../../../core/model/state.ts";
 import { seatProjection, tableProjection } from "../../../application/read-models/table.ts";
 import type { Nomination } from "../../../core/model/types.ts";
 import { displayName, roleNameOf, stepTitle } from "./helpers.ts";
@@ -95,6 +95,7 @@ export function TableRing({ view, dismissedDawn, onDismissDawn }: TableRingProps
                 player.id === targetStep.actorId) ||
               (targetStep.sv && targetStep.roleId === "snakecharmer" && !player.alive) ||
               targetStep.previousTarget === player.id ||
+              (targetStep.bmr && targetStep.roleId === "professor" && player.alive) ||
               (targetStep.bmr &&
                 targetStep.targetMode === "one-any" &&
                 targetStep.canResurrect &&
@@ -109,9 +110,23 @@ export function TableRing({ view, dismissedDawn, onDismissDawn }: TableRingProps
           acting: projection.step?.actorId === player.id,
           nominated: Boolean(nominated),
           impaired: seat.impaired && player.roleId !== "drunk",
+          drunk: seat.drunk && player.roleId !== "drunk",
+          poisoned: seat.poisoned && player.roleId !== "drunk",
           protected: seat.protected,
+          scheduledDeath: seat.scheduledDeath,
+          registeredDead: seat.registeredDead,
         });
-        const badgeText = badges.map((badge) => t(SEAT_BADGE_KEY[badge])).join(", ");
+        const badgeSources: Partial<Record<(typeof badges)[number], string | null>> = {
+          drunk: seat.drunkSourceRoleId,
+          poison: seat.poisonSourceRoleId,
+          protection: seat.protectionSourceRoleId,
+        };
+        const badgeLabels = badges.map((badge) => {
+          const source = badgeSources[badge];
+          const sourceName = source ? roleNameOf(source, ports.roles.byId) : "";
+          return t(SEAT_BADGE_KEY[badge]) + (sourceName ? " · " + sourceName : "");
+        });
+        const badgeText = badgeLabels.join(", ");
         return (
           <button
             key={player.id}
@@ -175,13 +190,13 @@ export function TableRing({ view, dismissedDawn, onDismissDawn }: TableRingProps
               </b>
               {badges.length ? (
                 <span className="flex flex-wrap gap-0.5">
-                  {badges.map((badge) => (
+                  {badges.map((badge, index) => (
                     <span
                       key={badge}
                       data-seat-badge={badge}
                       className={`whitespace-nowrap rounded-full border px-1 py-px text-[6.5px] font-semibold uppercase tracking-[.04em] min-[620px]:text-[7.5px] ${SEAT_BADGE_TONE[badge]}`}
                     >
-                      {t(SEAT_BADGE_KEY[badge])}
+                      {badgeLabels[index]}
                     </span>
                   ))}
                 </span>
@@ -335,8 +350,11 @@ function Hub({
           <span className={sub}>{t("votes")}</span>
         </div>
       ) : (
-        <b className="max-w-full text-[11px] leading-tight text-text min-[620px]:text-[13px]">
-          {t("nomination")}: {t("none")} · {livingPlayers(state).length} {t("alive")}
+        <b
+          className="max-w-full text-[11px] leading-tight text-text min-[620px]:text-[13px]"
+          data-nomination-none
+        >
+          {t("ui.noNomination")}
         </b>
       )}
       <span

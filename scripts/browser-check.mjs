@@ -536,18 +536,29 @@ async function finishNight() {
       await targets.nth(0).click();
       if (mode === "two") await page.locator("[data-target]:not(:disabled)").nth(1).click();
     }
-    const given = page.locator("select[data-given]");
+    const complete = page.locator('[data-act="complete"]');
+    assert.equal(await complete.isEnabled(), true, "night step should be completable");
+    await complete.click();
+    const given = page.locator("select[data-given]:visible");
     if (await given.count()) {
       const value = await given
         .locator("option")
         .evaluateAll((options) => options.find((option) => option.value)?.value);
       if (value) await given.selectOption(value);
     }
-    const complete = page.locator('[data-act="complete"]');
-    assert.equal(await complete.isEnabled(), true, "night step should be completable");
-    await complete.click();
+    const confirm = page.locator('[data-act="step-confirm"]');
+    assert.equal(await confirm.isEnabled(), true, "the step sheet should be confirmable");
+    await confirm.click();
   }
   throw new Error("Night did not end");
+}
+
+/** Opens the step sheet from the dock and confirms the prepared step. */
+async function completeStep() {
+  const complete = page.locator('[data-act="complete"]');
+  await complete.click();
+  const confirm = page.locator('[data-act="step-confirm"]');
+  if (await confirm.count()) await confirm.click();
 }
 
 try {
@@ -928,6 +939,7 @@ try {
   await route("/table");
   await page.locator('[data-target][data-id="1"]').click();
   await page.locator('[data-target][data-id="2"]').click();
+  await page.locator('[data-act="complete"]').click();
   assert.equal(
     await page.locator('[data-act="show-info"]').count(),
     0,
@@ -965,6 +977,7 @@ try {
     });
     assert.equal(await page.locator(".host").isVisible(), true, "closing returns to the console");
   }
+  await page.keyboard.press("Escape");
 
   // The role card from the player list: a Drunk shows the believed role.
   await seed(12);
@@ -983,6 +996,7 @@ try {
     "the player list keeps the seat number",
   );
   await page.locator('[data-roster-player="8"] [data-act="role-card"]').click();
+  await page.locator('[data-act="player-card"]').click();
   {
     const believed = await page.evaluate(
       () => window.PG.roles.find((role) => role.id === "washerwoman")?.name ?? "Washerwoman",
@@ -1034,42 +1048,32 @@ try {
   );
   await page.locator('[data-act="dawn-dismiss"]').click();
   assert.equal(await page.locator("[data-dawn]").count(), 0, "the dawn report is dismissible");
-  await page.locator('[data-act="open-nomination"]').click();
-  await page.locator("select[data-nom-from]").selectOption("1");
-  await page.locator("select[data-nom-to]").selectOption("2");
-  await page.locator('[data-act="confirm-nomination"]').click();
-  await page.waitForSelector("[data-nomination]");
-  assert.equal(
-    await page.locator('[data-act="execute"]').isDisabled(),
-    true,
-    "the execution control is unavailable before the votes",
-  );
-  await page.locator('[data-act="open-votes"]').click();
-  await page.locator('[data-act="votes-none"]').click();
-  for (const id of ["1", "2", "3"]) {
-    await page.locator(`input[data-vote-option][data-id="${id}"]`).check();
-  }
-  await page.locator('[data-act="save-votes"]').click();
-  await page.waitForSelector("[data-nomination-tally]");
   assert.match(
-    await page.locator("[data-nomination-tally]").innerText(),
-    /3/,
-    "the hub carries the recorded tally",
+    await page.locator("[data-nomination-none]").innerText(),
+    /Номинации нет|No nomination is open|Namizədlik yoxdur/,
   );
+  assert.equal(
+    await page.locator('[data-act="open-nomination"]').count(),
+    0,
+    "the console does not open nominations",
+  );
+  assert.equal(
+    await page.locator('[data-act="open-votes"]').count(),
+    0,
+    "the console does not record votes",
+  );
+  assert.equal(await page.locator('[data-act="day-help"]').count(), 1);
+  assert.equal(await page.locator('[data-act="end-day"]').count(), 1);
   assert.equal(
     await page.locator('[data-act="execute"]').isDisabled(),
     true,
-    "the execution control stays unavailable below the threshold",
+    "execute waits for a selected player",
   );
-  await page.locator('[data-act="open-votes"]').click();
-  await page.locator('[data-act="votes-all"]').click();
-  await page.locator("[data-votes-reason]").fill("Rechecked at the table");
-  await page.locator('[data-act="save-votes"]').click();
-  await page.waitForTimeout(150);
+  await page.locator('[data-seat-open="2"]').click();
   assert.equal(
     await page.locator('[data-act="execute"]').isEnabled(),
     true,
-    "the execution control becomes available at the threshold",
+    "the host records the execution without entering votes",
   );
   await page.locator('[data-act="execute"]').click();
   await page.waitForSelector("[data-executed]");
@@ -1538,14 +1542,14 @@ try {
   await route("/table");
   assert.equal(await page.locator(".manual-warning").count(), 1, "manual warning on the deal card");
   await page.locator('[data-act="start-night"]').click();
-  await page.waitForSelector(".host-card.is-night");
+  await page.waitForSelector('[data-table-dock][data-phase="night"]');
   assert.equal(
     await page.locator(".manual-warning").count(),
     1,
     "manual warning on the night card",
   );
   await page.locator('[data-act="end-night"]').click();
-  await page.waitForSelector(".host-card.is-day");
+  await page.waitForSelector('[data-table-dock][data-phase="day"]');
   // The table menu owns the day timer and the notes; both go through the store.
   await openTableMenu();
   await page.locator('[data-act="timer-start"]').click();
@@ -1561,6 +1565,7 @@ try {
     return store.state.notes === "Browser verification";
   });
   await page.locator('[data-act="close"]:visible').first().click();
+  await page.locator('[data-act="day-help"]').click();
   assert.equal(
     await page.locator("[data-winner-team]").count(),
     1,
@@ -1568,8 +1573,9 @@ try {
   );
   await page.locator("[data-winner-team]").selectOption("evil");
   await page.locator('[data-act="declare-winner"]').click();
-  await page.waitForSelector(".host-card.is-over");
-  assert.match(await page.locator(".host-card.is-over h1").innerText(), /Evil|Зло/);
+  await page.waitForSelector('[data-table-dock][data-phase="over"]');
+  assert.match(await page.locator('[data-step="over"] h1').innerText(), /Evil|Зло/);
+  await page.keyboard.press("Escape");
 
   // Editing a dealt custom pool requires confirmation; cancelling must leave
   // the saved game byte-for-byte intact.
@@ -1659,11 +1665,13 @@ try {
   assert.equal(await stepRole(), "poisoner", "Mayor scenario should start on the Poisoner");
   // Issue #45: an unanswered mandatory target blocks the step and explains why;
   // the preview shows the chosen target before the step is confirmed.
+  await page.locator('[data-act="complete"]').click();
   assert.equal(
-    await page.locator('[data-act="complete"]').isDisabled(),
+    await page.locator('[data-act="step-confirm"]').isDisabled(),
     true,
     "the Poisoner step is blocked until a target is chosen",
   );
+  await page.keyboard.press("Escape");
   assert.equal(
     await page.locator('[data-blocker-reason="targets"]').count(),
     1,
@@ -1712,11 +1720,13 @@ try {
   // Desktop smoke inside the table scenario, not the PWA update flow.
   await page.setViewportSize({ width: 1440, height: 900 });
   await overflow();
+  await page.locator('[data-act="complete"]').click();
   assert.equal(
-    await page.locator('[data-act="complete"]').isDisabled(),
+    await page.locator('[data-act="step-confirm"]').isDisabled(),
     true,
     "the desktop step stays blocked without a target",
   );
+  await page.keyboard.press("Escape");
   assert.equal(await page.locator("[data-preview-reason]").count(), 1);
   assert.ok(
     (await page.locator("[data-preview-reason]").innerText()).trim().length > 0,
@@ -1733,32 +1743,34 @@ try {
     path: join(screenshots, "storyteller-step-preview-phone.png"),
     fullPage: true,
   });
+  await page.locator('[data-act="complete"]').click();
   assert.equal(
     await page.locator("select[data-redirect]").count(),
     0,
     "the Poisoner's step must not offer a Mayor redirection",
   );
   assert.equal(
-    await page.locator('[data-act="complete"]').isEnabled(),
+    await page.locator('[data-act="step-confirm"]').isEnabled(),
     true,
-    "the step-complete button stays enabled when the Mayor is only poisoned",
+    "the step confirm stays enabled when the Mayor is only poisoned",
   );
   await page.screenshot({
     path: join(screenshots, "mayor-poison-poisoner-step.png"),
     fullPage: true,
   });
-  await page.locator('[data-act="complete"]').click();
+  await page.locator('[data-act="step-confirm"]').click();
   await page.waitForTimeout(200);
   // The poisoned Mayor loses the ability, so the Imp's step also asks nothing.
   assert.equal(await stepRole(), "imp");
   await page.locator('[data-target][data-id="1"]').click();
   await page.waitForTimeout(150);
+  await page.locator('[data-act="complete"]').click();
   assert.equal(
     await page.locator("select[data-redirect]").count(),
     0,
     "a poisoned Mayor attacked by the Imp must not offer a redirection",
   );
-  await page.locator('[data-act="complete"]').click();
+  await page.locator('[data-act="step-confirm"]').click();
   await page.waitForTimeout(200);
   const mayorDead = await page.evaluate(
     async () => (await window.PG_MODULES()).store.state.players["1"].alive,
@@ -1771,11 +1783,12 @@ try {
   await route("/table");
   await page.locator('[data-target][data-id="2"]').click();
   await page.waitForTimeout(150);
-  await page.locator('[data-act="complete"]').click();
+  await completeStep();
   await page.waitForTimeout(200);
   assert.equal(await stepRole(), "imp");
   await page.locator('[data-target][data-id="1"]').click();
   await page.waitForTimeout(150);
+  await page.locator('[data-act="complete"]').click();
   assert.equal(
     await page.locator("select[data-redirect]").count(),
     1,
@@ -1783,15 +1796,18 @@ try {
   );
   await page.locator("select[data-redirect]").selectOption("2");
   await page.waitForTimeout(150);
+  await page.keyboard.press("Escape");
   await page.locator('[data-target][data-id="3"]').click();
   await page.waitForTimeout(150);
   await page.locator('[data-target][data-id="1"]').click();
   await page.waitForTimeout(150);
+  await page.locator('[data-act="complete"]').click();
   assert.equal(
     await page.locator("select[data-redirect]").inputValue(),
     "none",
     "retargeting the Imp must reset the stored Mayor redirection",
   );
+  await page.keyboard.press("Escape");
 
   // A dead or protected player can be named as the Mayor's replacement, but
   // the attack then kills nobody and the Mayor survives.
@@ -1800,6 +1816,7 @@ try {
   assert.equal(await stepRole(), "imp");
   await page.locator('[data-target][data-id="1"]').click();
   await page.waitForTimeout(150);
+  await page.locator('[data-act="complete"]').click();
   const redirectSelect = page.locator("select[data-redirect]");
   assert.equal(await redirectSelect.count(), 1, "a healthy Mayor offers a redirection");
   const redirectOptions = await redirectSelect
@@ -1822,7 +1839,7 @@ try {
   );
   await redirectSelect.selectOption("2");
   await page.waitForTimeout(150);
-  await page.locator('[data-act="complete"]').click();
+  await page.locator('[data-act="step-confirm"]').click();
   await page.waitForTimeout(200);
   let mayorState = await page.evaluate(async () => {
     const { state } = (await window.PG_MODULES()).store;
@@ -1839,9 +1856,10 @@ try {
   await route("/table");
   await page.locator('[data-target][data-id="1"]').click();
   await page.waitForTimeout(150);
+  await page.locator('[data-act="complete"]').click();
   await page.locator("select[data-redirect]").selectOption("3");
   await page.waitForTimeout(150);
-  await page.locator('[data-act="complete"]').click();
+  await page.locator('[data-act="step-confirm"]').click();
   await page.waitForTimeout(200);
   mayorState = await page.evaluate(async () => {
     const { state } = (await window.PG_MODULES()).store;
@@ -1901,6 +1919,7 @@ try {
   assert.equal(await stepRole(), "sailor");
   await page.locator('[data-target][data-id="2"]').click();
   await page.waitForTimeout(150);
+  await page.locator('[data-act="complete"]').click();
   assert.equal(
     await page.locator("select[data-bmr-drunk]").count(),
     1,
@@ -1911,6 +1930,123 @@ try {
       /Player 2/.test(text),
     ),
     "the selected target is offered as the drunk pick",
+  );
+  await page.keyboard.press("Escape");
+
+  const seedBmrStep = async (roles, target) => {
+    const seeded = await page.evaluate(
+      async ({ roles, target }) => {
+        const { model, engine, store, rules } = await window.PG_MODULES();
+        const game = model.createGame(roles.length);
+        game.scriptId = "bmr";
+        game.script = {
+          ...game.script,
+          id: "bmr",
+          name: "Bad Moon Rising",
+          edition: "bmr",
+          roles: [...rules.BMR_ALL],
+        };
+        game.setup.count = roles.length;
+        game.setup.roles = [...roles];
+        game.setup.bluffs = [];
+        game.order.forEach((id) => {
+          game.players[id].name = "Player " + id;
+          game.players[id].claimed = true;
+        });
+        const assignment = Object.fromEntries(game.order.map((id, index) => [id, roles[index]]));
+        const dealt = engine.dealGame(game, { assignment });
+        if (!dealt.ok) return dealt;
+        engine.autoSecrets(game);
+        game.phase = "seat";
+        let start = engine.startNight(game);
+        if (!start.ok) return start;
+        for (let night = 1; night <= 2; night += 1) {
+          if (game.night.queue.some((step) => step.roleId === target)) break;
+          while (engine.currentStep(game)) {
+            engine.skipStep(game, engine.currentStep(game).key, "browser check");
+          }
+          if (!engine.endNight(game).ok || !engine.endDay(game).ok) break;
+          start = engine.startNight(game);
+          if (!start.ok) return start;
+        }
+        while (engine.currentStep(game) && engine.currentStep(game).roleId !== target) {
+          engine.skipStep(game, engine.currentStep(game).key, "browser check");
+        }
+        store.replaceState(game);
+        dispatchEvent(new PopStateEvent("popstate"));
+        return { ok: true };
+      },
+      { roles, target },
+    );
+    assert.equal(seeded.ok, true, JSON.stringify(seeded));
+    await page.waitForTimeout(100);
+  };
+
+  await seedBmrStep(["sailor", "innkeeper", "gambler", "goon", "assassin", "shabaloth"], "gambler");
+  await route("/table");
+  await page.locator('[data-target][data-id="2"]').click();
+  await page.locator('[data-act="complete"]').click();
+  assert.equal(
+    await page.locator('[data-bmr-decision="role"]').count(),
+    1,
+    "the Gambler guess has its own section",
+  );
+  assert.equal(await page.locator('[data-bmr-decision="marking"]').count(), 1);
+  assert.equal(
+    await page.locator('[data-bmr-decision="role"] [data-bmr-role]').count(),
+    1,
+    "the guess is inside the role decision",
+  );
+  assert.equal(await page.locator('[data-bmr-decision="marking"] [data-bmr-role]').count(), 0);
+  await page.keyboard.press("Escape");
+
+  await seedBmrStep(["sailor", "gambler", "courtier", "tinker", "assassin", "shabaloth"], "tinker");
+  await route("/table");
+  await page.locator('[data-act="complete"]').click();
+  assert.equal(
+    await page.locator('[data-bmr-decision="tinker"]').count(),
+    1,
+    "the Tinker has an explicit decision",
+  );
+  assert.equal(await page.locator('[data-tinker-decision="die"]').count(), 1);
+  assert.equal(await page.locator('[data-tinker-decision="live"]').count(), 1);
+  assert.equal(await page.locator("[data-bmr-death]").count(), 0);
+  assert.equal(
+    await page.locator('[role="dialog"] .bmr-warning').count(),
+    0,
+    "the step sheet does not repeat the tracking warning",
+  );
+  await page.keyboard.press("Escape");
+
+  await page.evaluate(async () => {
+    const { model, store, rules } = await window.PG_MODULES();
+    const roles = ["sailor", "gambler", "tinker", "courtier", "assassin", "shabaloth"];
+    const game = model.createGame(6);
+    game.scriptId = "bmr";
+    game.script = {
+      ...game.script,
+      id: "bmr",
+      name: "Bad Moon Rising",
+      edition: "bmr",
+      roles: [...rules.BMR_ALL],
+    };
+    game.setup.count = 6;
+    game.setup.roles = [...roles];
+    game.setup.bluffs = [];
+    game.order.forEach((id, index) => {
+      game.players[id].name = "Player " + id;
+      game.players[id].claimed = true;
+      game.players[id].roleId = roles[index];
+    });
+    game.phase = "setup";
+    store.replaceState(game);
+    dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await route("/table");
+  assert.equal(
+    await page.locator(".bmr-warning").count(),
+    1,
+    "the deal screen shows the tracking warning once",
   );
 
   // The Fortune Teller may pick themself as one of the two targets.
@@ -1927,7 +2063,7 @@ try {
     true,
     "self plus another player is a complete Fortune Teller choice",
   );
-  await page.locator('[data-act="complete"]').click();
+  await completeStep();
   await page.waitForTimeout(200);
   const fortuneGiven = await page.evaluate(async () => {
     const { state } = (await window.PG_MODULES()).store;
@@ -2045,6 +2181,7 @@ try {
   );
   await page.locator('[data-act="close"]').click();
   await finishNight();
+  await page.locator('[data-act="day-help"]').click();
   assert.equal(await page.locator("[data-virgin-form]").count(), 1);
   assert.equal(
     await page.locator('[data-act="end-day"]').isEnabled(),
@@ -2127,8 +2264,8 @@ try {
     });
     store.replaceState(next);
   });
+  await page.locator('[data-act="day-help"]').click();
   await page.waitForSelector('[data-madness-review] [data-madness-status="pending"]');
-  await page.locator('[data-act="end-day"]').click();
   assert.match(
     await page.locator("[data-preview-reason]").textContent(),
     /Review every active madness effect/,
@@ -2146,10 +2283,11 @@ try {
     "none",
     "the Storyteller's review is stored on the madness effect",
   );
+  await page.keyboard.press("Escape");
   await page.locator('[data-act="end-day"]').click();
   await finishNight();
-  await page.locator("[data-exec-target]").selectOption("7");
-  await page.locator('[data-act="execute-direct"]').click();
+  await page.locator('[data-seat-open="7"]').click();
+  await page.locator('[data-act="execute"]').click();
   assert.equal(await page.locator(".host-review").count(), 0);
   await page.locator('[data-act="review"]').click();
   assert.equal(await page.locator(".host-review").count(), 1);
@@ -2963,16 +3101,16 @@ try {
   await chooseLanguage("en");
   assert.equal(await page.locator("[data-table-stage]").count(), 1);
   await finishNight();
-  await page.locator("[data-exec-target]").selectOption("12");
-  await page.locator('[data-act="execute-direct"]').click();
+  await page.locator('[data-seat-open="12"]').click();
+  await page.locator('[data-act="execute"]').click();
   assert.equal(
     await page.evaluate(async () => (await window.PG_MODULES()).store.state.players["11"].roleId),
     "imp",
   );
   await page.locator('[data-act="end-day"]').click();
   await finishNight();
-  await page.locator("[data-exec-target]").selectOption("11");
-  await page.locator('[data-act="execute-direct"]').click();
+  await page.locator('[data-seat-open="11"]').click();
+  await page.locator('[data-act="execute"]').click();
   assert.equal(
     await page.evaluate(async () => (await window.PG_MODULES()).store.state.winner?.team),
     "good",
@@ -3346,6 +3484,15 @@ try {
       const complete = tab.locator('[data-act="complete"]:visible');
       if ((await complete.count()) && (await complete.first().isEnabled())) {
         await complete.first().click();
+        const sheetGiven = tab.locator("select[data-given]:visible");
+        if (await sheetGiven.count()) {
+          const value = await sheetGiven
+            .locator("option")
+            .evaluateAll((nodes) => nodes.find((node) => node.value)?.value);
+          if (value) await sheetGiven.selectOption(value);
+        }
+        const confirm = tab.locator('[data-act="step-confirm"]:visible');
+        if (await confirm.count()) await confirm.first().click();
       } else {
         const skip = tab.locator('[data-act="skip"]:visible');
         assert.ok(await skip.count(), "a night step exposes a control");
@@ -3417,12 +3564,12 @@ try {
       await fillPhoneSecrets(tab);
       await tab.waitForSelector(".secrets-status.is-ok");
       await tab.locator('[data-act="start"]').click();
-      await tab.waitForSelector(".host-card.is-night");
+      await tab.waitForSelector('[data-table-dock][data-phase="night"]');
       await record("night", "table");
 
       await finishPhoneNight(tab);
       await tab.locator('[data-act="end-night"]').click();
-      await tab.waitForSelector(".host-card.is-day");
+      await tab.waitForSelector('[data-table-dock][data-phase="day"]');
       await record("day", "table");
 
       // The host knows the Imp and executes it, which ends the game in a good
@@ -3434,13 +3581,14 @@ try {
         );
       });
       assert.ok(demonId, `${label}: the dealt bag contains the Imp`);
-      const executionOptions = await tab
-        .locator("[data-exec-target] option")
-        .evaluateAll((nodes) => nodes.map((node) => node.value).filter(Boolean));
-      assert.ok(executionOptions.includes(demonId), `${label}: the Imp is an execution target`);
-      await tab.locator("[data-exec-target]").selectOption(demonId);
-      await tab.locator('[data-act="execute-direct"]').click();
-      await tab.waitForSelector(".host-card.is-over");
+      assert.equal(
+        await tab.locator(`[data-seat-open="${demonId}"]`).count(),
+        1,
+        `${label}: the Imp is an execution target`,
+      );
+      await tab.locator(`[data-seat-open="${demonId}"]`).click();
+      await tab.locator('[data-act="execute"]').click();
+      await tab.waitForSelector('[data-table-dock][data-phase="over"]');
       await record("result", "table");
 
       await tab.locator('[data-act="review"]').click();
@@ -3459,7 +3607,7 @@ try {
       );
       // A played game writes two records of its own: the save and the console's
       // night-step recovery aid. Neither is a configuration the host supplied.
-      const OWN_KEYS = ["pg.game.v4", "pg.lang", "pg.stepDraft"];
+      const OWN_KEYS = ["pg.game.v4", "pg.lang", "pg.stepDraft", "pg.guided"];
       const keys = await tab.evaluate(() => Object.keys(localStorage).sort());
       assert.deepEqual(
         keys.filter((key) => !OWN_KEYS.includes(key)),
@@ -3474,6 +3622,179 @@ try {
 
   await walkPhone({ width: 360, height: 640 });
   await walkPhone({ width: 640, height: 360 });
+
+  // The Velvet console gaps: the count stepper, the day-help split, the dawn
+  // readout, the scheduled and registered badges, the badge source, the
+  // victory copy and the minion card dismissal.
+  if (
+    await page
+      .locator("#update-later")
+      .isVisible()
+      .catch(() => false)
+  ) {
+    await page.locator("#update-later").click();
+  }
+  await seed(7, "deal");
+  await route("/bag");
+  const countBefore = await page.evaluate(
+    async () => (await window.PG_MODULES()).store.state.setup.count,
+  );
+  const acceptCount = (dialog) => dialog.accept();
+  page.on("dialog", acceptCount);
+  await page.locator('[data-count="1"]').click();
+  await page.locator('[data-count="1"]').click();
+  page.off("dialog", acceptCount);
+  await page.waitForFunction(
+    async (expected) => (await window.PG_MODULES()).store.state.setup.count === expected,
+    countBefore + 2,
+    { timeout: 3000 },
+  );
+
+  await seed(7);
+  await route("/table");
+  await finishNight();
+  assert.equal(
+    await page.locator("[data-nomination-none]").count(),
+    0,
+    "the dawn report opens before the nomination readout",
+  );
+  await page.locator('[data-act="dawn-dismiss"]').click();
+  assert.match(
+    await page.locator("[data-nomination-none]").innerText(),
+    /Номинации нет|No nomination is open|Namizədlik yoxdur/,
+  );
+  await page.locator('[data-act="day-help"]').click();
+  assert.equal(
+    await page.locator('[role="dialog"] [data-exec-target]').count(),
+    0,
+    "day help keeps the generic execution in the dock",
+  );
+  assert.equal(await page.locator('[role="dialog"] [data-virgin-form]').count(), 1);
+  await page.keyboard.press("Escape");
+
+  await page.evaluate(async () => {
+    const { store } = await window.PG_MODULES();
+    store.run((state) => {
+      state.players["2"].registeredDead = true;
+      state.effects.push(
+        {
+          id: "browser-scheduled",
+          kind: "pukka-death",
+          sourceId: "3",
+          targetId: "4",
+          start: { phase: "night", number: 1 },
+          expires: null,
+          active: true,
+        },
+        {
+          id: "browser-drunk",
+          kind: "drunk",
+          sourceId: "2",
+          targetId: "5",
+          start: { phase: "night", number: 1 },
+          expires: null,
+          active: true,
+        },
+      );
+    });
+  });
+  await page.waitForTimeout(150);
+  assert.equal(
+    await page.locator('[data-seat-open="2"] [data-seat-badge="registered-dead"]').count(),
+    1,
+    "the ring marks a registered death",
+  );
+  assert.equal(
+    await page.locator('[data-seat-open="4"] [data-seat-badge="scheduled"]').count(),
+    1,
+    "the ring marks a scheduled death",
+  );
+  assert.equal(
+    await page.locator('[data-seat-open="5"] [data-seat-badge="drunk"]').count(),
+    1,
+    "the ring marks the drunk seat",
+  );
+  assert.match(
+    await page.locator('[data-seat-open="5"] [data-seat-badge="drunk"]').textContent(),
+    /Эмпат|Empath|Empat/,
+    "the drunk badge names its source",
+  );
+
+  await page.evaluate(async () => {
+    const { store } = await window.PG_MODULES();
+    store.run((state) => {
+      state.phase = "over";
+      state.day.execution = { playerId: "7", cause: "execution", at: new Date().toISOString() };
+      state.players["7"].roleId = "imp";
+      state.winner = { team: "good", reason: "demon-dead", title: "Победа добра" };
+    });
+  });
+  await page.waitForTimeout(150);
+  assert.match(
+    await page.locator('[data-step="over"] [data-win-reason="demon-dead"]').innerText(),
+    /Демон казнён|Demon was executed|Demon edam edildi/,
+    "an executed Demon reads as executed",
+  );
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator('[data-act="new-game"]').click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator('[data-act="new-game"]').click();
+  await page.waitForURL(/\/bag/);
+  await route("/table");
+  assert.equal(await page.locator('[data-step="over"]').count(), 0, "the finished table is gone");
+  assert.equal(
+    await page.evaluate(async () => (await window.PG_MODULES()).store.state.order.length),
+    8,
+    "the new game starts from the default bag",
+  );
+
+  await seed(7, "deal");
+  await route("/table");
+  const dealLabels = await page.locator(".host-card a.btn").allTextContents();
+  assert.equal(
+    new Set(dealLabels).size,
+    dealLabels.length,
+    "the deal screen does not repeat one return action",
+  );
+
+  await seed(7);
+  await route("/table");
+  await page.locator('[data-act="complete"]').click();
+  const cardButton = page.locator('[data-act="show-info"]');
+  if (await cardButton.count()) {
+    await cardButton.click();
+    await page.locator('[data-act="hide-card"]').click();
+    await page.waitForSelector('[data-act="step-confirm"]');
+    await page.keyboard.press("Escape");
+  }
+
+  await seed(7);
+  await route("/table");
+  assert.equal(
+    await page.locator('[data-table-dock] [data-act="undo"]').count(),
+    1,
+    "the dock owns one undo control",
+  );
+  assert.match(
+    await page.locator('[data-act="reset-step"]').innerText(),
+    /Очистить выбор|Clear selection|Seçimi təmizlə/,
+    "the draft reset is not labelled as undo",
+  );
+  const stepBeforeUndo = await stepRole();
+  await page.locator('[data-act="skip"]').click();
+  await page.waitForTimeout(150);
+  assert.notEqual(await stepRole(), stepBeforeUndo, "skip advances the night");
+  await page.locator('[data-table-dock] [data-act="undo"]').click();
+  await page.waitForTimeout(150);
+  assert.equal(await stepRole(), stepBeforeUndo, "the dock undo restores the step");
+  await openTableMenu();
+  assert.equal(
+    await page.locator('[data-menu] [data-act="undo"]').count(),
+    0,
+    "the table menu does not repeat undo",
+  );
+  await page.locator('[data-act="close"]:visible').first().click();
 
   assert.deepEqual(errors, []);
   console.log(

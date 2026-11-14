@@ -22,6 +22,7 @@ import {
   roleNameOf,
   stepTitle,
   targetNames,
+  winReasonKey,
 } from "./helpers.ts";
 import type { StepInfo } from "./helpers.ts";
 import { Warn } from "./parts.tsx";
@@ -86,7 +87,6 @@ export function NightCard({ view }: { view: TableView }) {
     const options = pending.pending ? pending.pending.options || [] : [];
     return (
       <section className={`host-card is-night ${NIGHT_CARD}`}>
-        {bmrWarning(view)}
         <p className="label">{t("pendingHeir")}</p>
         <h1 className={CARD_TITLE}>{t("pendingHeirText")}</h1>
         <div className={TARGET_GRID}>
@@ -119,7 +119,6 @@ export function NightCard({ view }: { view: TableView }) {
     return (
       <section className={`host-card is-night ${NIGHT_CARD}`}>
         {manualWarning(view)}
-        {bmrWarning(view)}
         <p className="label">
           {t("night")} {state.night.number}
         </p>
@@ -172,7 +171,6 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
   return (
     <section className={`host-card is-night ${NIGHT_CARD}`} data-step={key} data-step-sheet>
       {manualWarning(view)}
-      {bmrWarning(view)}
       <div className="flex items-center justify-between gap-2">
         <p className="label">{t("ui.activeRole")}</p>
         <span className="text-[9px] uppercase tracking-[.12em] text-brass">
@@ -231,6 +229,11 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
           <p className={MUTED}>
             {t("ui.chosenTargets", { names: targetNames(selected, state, t) || "—" })}
           </p>
+          {step.noteKey || step.note ? (
+            <p className={MUTED} data-step-note>
+              {step.noteKey ? t(step.noteKey, step.noteVars ?? undefined) : step.note}
+            </p>
+          ) : null}
           <div className="grid gap-1">
             <span className="label">{t("ui.activeEffects")}</span>
             {stepEffects.length ? (
@@ -575,8 +578,54 @@ function BmrOutcome({
     <div className={`${SECTION} grid gap-1`}>
       <span className="label">{t("bmrOutcome")}</span>
       <p className={MUTED}>{t(step.roleId === "pukka" ? "bmrPukkaAuto" : "bmrHostRuns")}</p>
-      {step.canKill ? (
-        <>
+      {Array.isArray(step.roleChoices) && step.roleChoices.length ? (
+        <div className="grid gap-1 rounded-sm border border-edge p-2" data-bmr-decision="role">
+          <label className={FIELD_BOX}>
+            <span className="label">{t("bmrRoleChoice")}</span>
+            <select
+              className="field"
+              data-bmr-role={key}
+              value={drafts.bmrRoles.get(draftKey) || ""}
+              onChange={(event) => drafts.putBmrRole(draftKey, event.target.value || null)}
+            >
+              <option value="">{t("ui.chooseRole")}</option>
+              {(step.roleChoices as unknown[]).map((id) => (
+                <option key={String(id)} value={String(id)}>
+                  {roleNameOf(String(id), ports.roles.byId)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
+      {step.roleId === "tinker" ? (
+        <div className="grid gap-1 rounded-sm border border-edge p-2" data-bmr-decision="tinker">
+          <span className="label">{t("ui.tinkerDecision")}</span>
+          <p className={`${MUTED} m-0`}>{t("ui.tinkerHint")}</p>
+          <div className={INLINE}>
+            <button
+              className={`${TARGET} ${deaths.includes(String(step.actorId)) ? TARGET_ON : ""}`}
+              type="button"
+              data-tinker-decision="die"
+              onClick={() =>
+                drafts.putBmrDeaths(draftKey, step.actorId ? [String(step.actorId)] : [])
+              }
+            >
+              {t("ui.tinkerDies")}
+            </button>
+            <button
+              className={`${TARGET} ${deaths.length ? "" : TARGET_ON}`}
+              type="button"
+              data-tinker-decision="live"
+              onClick={() => drafts.putBmrDeaths(draftKey, [])}
+            >
+              {t("ui.tinkerLives")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {step.canKill && step.roleId !== "tinker" ? (
+        <div className="grid gap-1 rounded-sm border border-edge p-2" data-bmr-decision="marking">
           <div className={TARGET_GRID}>
             {orderedPlayers(state)
               .filter((player) => player.alive)
@@ -607,7 +656,7 @@ function BmrOutcome({
           <p className={MUTED}>
             {t("bmrDeaths")}: {targetNames(deaths, state, t) || "—"}
           </p>
-        </>
+        </div>
       ) : null}
       {poisonChoices.length ? (
         <label className={FIELD_BOX}>
@@ -629,24 +678,6 @@ function BmrOutcome({
           </select>
         </label>
       ) : null}
-      {Array.isArray(step.roleChoices) && step.roleChoices.length ? (
-        <label className={FIELD_BOX}>
-          <span className="label">{t("bmrRoleChoice")}</span>
-          <select
-            className="field"
-            data-bmr-role={key}
-            value={drafts.bmrRoles.get(draftKey) || ""}
-            onChange={(event) => drafts.putBmrRole(draftKey, event.target.value || null)}
-          >
-            <option value="">{t("ui.chooseRole")}</option>
-            {(step.roleChoices as unknown[]).map((id) => (
-              <option key={String(id)} value={String(id)}>
-                {roleNameOf(String(id), ports.roles.byId)}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
       {(step.roleId === "sailor" || step.roleId === "innkeeper") &&
       (drafts.targets.get(draftKey) || []).length ? (
         <label className={FIELD_BOX}>
@@ -658,14 +689,19 @@ function BmrOutcome({
             onChange={(event) => drafts.putBmrDrunk(draftKey, event.target.value || null)}
           >
             <option value="">{t("none")}</option>
-            {(drafts.targets.get(draftKey) || []).map((id) => {
-              const player = playerById(state, id);
-              return (
-                <option key={id} value={id}>
-                  {player ? displayName(player, t) : id}
-                </option>
-              );
-            })}
+            {(step.roleId === "sailor"
+              ? [step.actorId, ...(drafts.targets.get(draftKey) || [])]
+              : drafts.targets.get(draftKey) || []
+            )
+              .filter((id): id is string => Boolean(id))
+              .map((id) => {
+                const player = playerById(state, id);
+                return (
+                  <option key={id} value={id}>
+                    {player ? displayName(player, t) : id}
+                  </option>
+                );
+              })}
           </select>
         </label>
       ) : null}
@@ -691,7 +727,13 @@ function BmrOutcome({
   );
 }
 
-export function DayCard({ view }: { view: TableView }) {
+export function DayCard({
+  view,
+  roleFormsOnly = false,
+}: {
+  view: TableView;
+  roleFormsOnly?: boolean;
+}) {
   const { state, drafts, ports, actions } = view;
   const t = ports.strings.t;
   // Local to the day card: the choice must not survive into the next day.
@@ -721,7 +763,6 @@ export function DayCard({ view }: { view: TableView }) {
   return (
     <section className={`host-card is-day ${DAY_CARD}`} data-step="day">
       {manualWarning(view)}
-      {bmrWarning(view)}
       <p className="label">
         {t("day")} {day.number}
       </p>
@@ -827,7 +868,7 @@ export function DayCard({ view }: { view: TableView }) {
         </div>
       ) : null}
 
-      {!day.execution && !day.ended ? (
+      {!roleFormsOnly && !day.execution && !day.ended ? (
         <div className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5">
           <span className="label">{t("ui.executedWho")}</span>
           <div className={INLINE}>
@@ -932,7 +973,7 @@ export function DayCard({ view }: { view: TableView }) {
         </form>
       ) : null}
 
-      {executed ? (
+      {!roleFormsOnly && executed ? (
         <div className="my-2.5 rounded-md border border-crimson-dim bg-crimson-dim/20 p-2.5">
           <span className="label">{t("execution")}</span>
           <b className="my-0.5 block text-[18px]">{displayName(executed, t)}</b>
@@ -1293,6 +1334,7 @@ export function DealCard({ view }: { view: TableView }) {
   return (
     <section className={`host-card ${CARD} ${CARD_LINE}`}>
       {manualWarning(view)}
+      {bmrWarning(view)}
       <p className="label">{t("playerHandoff")}</p>
       <h1 className={CARD_TITLE}>
         {!everyoneNamed ? t("ui.names") : !seated ? t("ui.arrange") : t("ui.checkSecrets")}
@@ -1313,12 +1355,19 @@ export function DealCard({ view }: { view: TableView }) {
         <a className="btn btn--accent" href={ports.router.path(route)}>
           {step === "names" ? t("ui.handoff") : step === "seats" ? t("ui.seats") : t("ui.secrets")}
         </a>
-        <a className="btn" href={ports.router.path("seat")}>
-          {t("seats")}
-        </a>
-        <a className="btn" href={ports.router.path("secrets")}>
-          {t("secrets")}
-        </a>
+        {(
+          [
+            ["player", t("ui.handoff")],
+            ["seat", t("seats")],
+            ["secrets", t("secrets")],
+          ] as const
+        )
+          .filter(([target]) => target !== route)
+          .map(([target, label]) => (
+            <a className="btn" href={ports.router.path(target)} key={target}>
+              {label}
+            </a>
+          ))}
         <button
           className="btn btn--quiet"
           type="button"
@@ -1336,9 +1385,6 @@ export function DealCard({ view }: { view: TableView }) {
               <li key={error.code + error.message}>{error.message}</li>
             ))}
           </ul>
-          <a className="btn" href={ports.router.path("secrets")}>
-            {t("secrets")}
-          </a>
         </Warn>
       ) : null}
       {seated ? (
@@ -1366,7 +1412,9 @@ export function OverCard({ view }: { view: TableView }) {
       <h1 className={CARD_TITLE}>
         {winner ? t(winner.team === "good" ? "winnerGood" : "winnerEvil") : t("gameOver")}
       </h1>
-      <p className={CARD_TEXT}>{winner ? t("winReason." + winner.reason) : ""}</p>
+      <p className={CARD_TEXT} data-win-reason={winner?.reason ?? ""}>
+        {winner ? t(winReasonKey(state, winner)) : ""}
+      </p>
       <div className={INLINE}>
         {!state.reviewOpen ? (
           <button

@@ -174,20 +174,6 @@ export function bmrCannotDie(
   if (player.roleId === "zombuul" && sober && !(player.used && player.used.zombuul))
     return "zombuul";
   if (bypass) return null;
-  if (player.roleId === "fool" && sober && !(player.used && player.used.fool)) return "fool";
-  if (player.roleId === "soldier" && sober && (cause === "demon" || cause === "ability"))
-    return "soldier";
-  if (player.roleId === "sailor" && sober) return "sailor";
-  if (teaLadyProtects(state, playerId, at)) return "tea-lady";
-  const innkeeper = state.effects.find(
-    (effect) =>
-      effect.kind === "protected" &&
-      effect.targetId === playerId &&
-      effectActive(state, effect, at) &&
-      effect.bmr === "innkeeper" &&
-      (cause === "demon" || cause === "ability"),
-  );
-  if (innkeeper) return "innkeeper";
   if (cause === "execution") {
     const advocate = state.effects.find(
       (effect) =>
@@ -198,5 +184,20 @@ export function bmrCannotDie(
     );
     if (advocate) return "devilsadvocate";
   }
+  if (player.roleId === "fool" && sober && !(player.used && player.used.fool)) return "fool";
+  if (player.roleId === "soldier" && sober && (cause === "demon" || cause === "ability"))
+    return "soldier";
+  if (player.roleId === "sailor" && sober && (cause === "demon" || cause === "ability"))
+    return "sailor";
+  if (teaLadyProtects(state, playerId, at)) return "tea-lady";
+  const innkeeper = state.effects.find(
+    (effect) =>
+      effect.kind === "protected" &&
+      effect.targetId === playerId &&
+      effectActive(state, effect, at) &&
+      effect.bmr === "innkeeper" &&
+      (cause === "demon" || cause === "ability"),
+  );
+  if (innkeeper) return "innkeeper";
   return null;
 }

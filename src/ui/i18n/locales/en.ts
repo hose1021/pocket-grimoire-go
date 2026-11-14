@@ -45,13 +45,11 @@ export default {
   ready: "Ready",
   next: "Next",
   finishNight: "End night",
-  openNominations: "Open nominations",
   nomination: "Nomination",
   nominator: "Nominating player",
   nominee: "Nominee",
   nominate: "Nominate",
   votes: "Votes",
-  recordVotes: "Record votes",
   threshold: "Threshold",
   execute: "Execute",
   dayWithoutExecution: "Day without execution",
@@ -236,7 +234,7 @@ export default {
   rosterHint: "Tap a player to show their role card.",
   tableMenu: "Table menu",
   dawnSurvivors: "{living} of {total} survived",
-  dawnDismiss: "To the nomination",
+  dawnDismiss: "Hide report",
   tools: "Tools",
   recoverClaim: "Reopen role handoff",
   recoverClaimHint:
@@ -352,6 +350,8 @@ export default {
   "ui.secrets": "To secret setup",
   "ui.step": "Step",
   "ui.execution": "execution",
+  seat: "Seat",
+  "ui.ability": "ability",
   "ui.demon": "Demon",
   "ui.slayer": "Slayer",
   "ui.virgin": "Virgin",
@@ -430,7 +430,7 @@ export default {
   "ui.consequence.revived": "Player revived",
   "ui.rejectedTitle": "Command rejected",
   "ui.dismiss": "Dismiss",
-  "ui.resetStep": "Cancel turn",
+  "ui.resetStep": "Clear selection",
   "ui.effect.poison": "Poisoned",
   "ui.effect.protected": "Protected",
   "ui.effect.drunk": "Drunk",
@@ -449,6 +449,9 @@ export default {
   "ui.action": "Action",
   minionInfo: "Minions",
   demonInfo: "Demon",
+  "ui.previousTargetBlocked": "Last night's target is unavailable: {name}",
+  "ui.mastermindExtraDay":
+    "Mastermind: the Demon was executed, but the game continues for one more day. Whoever is executed that day loses.",
   "ui.confirm": "Confirm",
   "ui.executeNeedsTarget": "Select a player at the table",
   "ui.executeUnavailable": "Execution unavailable",
@@ -494,6 +497,8 @@ export default {
   "winReason.saint": "The healthy Saint died by execution.",
   "winReason.mayor": "The healthy Mayor survived a day with three alive and no execution.",
   "winReason.two-alive": "Only two players remain alive.",
+  "winReason.mastermind":
+    "The Mastermind granted one more day, and their team lost that execution.",
   "help.setup":
     "Choose a legal bag, the Drunk’s shown Townsfolk, and three good bluffs not in play. Games with 5–6 players have no evil introduction or bluffs.",
   "help.player":
@@ -795,4 +800,70 @@ export default {
   "custom.problem.no-drunk-mask": "The Drunk needs an unused Townsfolk role.",
   "custom.problem.invalid": "The pool cannot make a legal bag for this count.",
   "custom.problem.duplicate": "The pool is too small for three distinct bags.",
+  "ui.noNomination": "No nomination is open",
+  "ui.zombuulExecution":
+    "The Zombuul registers as dead: {names}. Check whether it still acts before the execution.",
+  "winReason.demon-executed": "The Demon was executed.",
+  backToTableConfirm: "Back to the table",
+  "ui.tinkerDecision": "Tinker decision",
+  "ui.tinkerHint": "The Storyteller decides whether the Tinker dies tonight.",
+  "ui.tinkerDies": "The Tinker dies",
+  "ui.tinkerLives": "The Tinker survives",
+  "ui.drunkMaskHint": "An unused Townsfolk role: the character the Drunk believes they are.",
+  "note.bmr.sailor":
+    "Choose an alive player. Decide whether the Sailor or that player is drunk until dusk.",
+  "note.bmr.courtier": "Once per game: choose a character; they are drunk for 3 nights and 3 days.",
+  "note.bmr.devilAdvocateFirst":
+    "Choose a living player. If they are executed tomorrow, they do not die.",
+  "note.bmr.devilAdvocateOther":
+    "Choose a living player (different from last night). If executed tomorrow, they do not die.",
+  "note.bmr.pukka":
+    "Choose a player: they are poisoned. The engine resolves the previous victim's death and applies the new poison.",
+  "note.bmr.grandmotherDeath": "The Demon killed the grandchild. The Grandmother dies.",
+  "note.bmr.innkeeper":
+    "Choose two players: they are safe tonight. Decide which one is drunk until dusk.",
+  "note.bmr.gambler":
+    "Choose a player and ask for a role guess. If the guess is wrong, the Gambler dies.",
+  "note.bmr.lunatic":
+    "The Lunatic chooses a player as if they were the Demon. No one dies; tell the real Demon.",
+  "note.bmr.exorcist":
+    "Choose a player (different from last night). If they are the Demon, the Demon learns who the Exorcist is and does not wake.",
+  "note.bmr.zombuul": "No one died today, so the Zombuul may choose a player: they die.",
+  "note.bmr.shabaloth":
+    "Choose two players: they die. You may resurrect one dead player you chose last night.",
+  "note.bmr.po":
+    "Choose no one or one player. If the last choice was no one, choose three players tonight.",
+  "note.bmr.assassin": "Once per game: choose a player. They die even if protected.",
+  "note.bmr.godfather": "An Outsider died today. Choose a player: they die.",
+  "note.bmr.gossip": "The Gossip's statement was true. Choose a player: they die.",
+  "note.bmr.professor":
+    "Once per game: choose a dead player. If they are a Townsfolk, they are resurrected.",
+  "note.bmr.tinker": "The Tinker might die. Record the death only if it happens.",
+  "note.bmr.moonchild":
+    "The Moonchild chose this player when they died. If the player is good, they die.",
+  "note.abilityFailed": "The ability did not work: the player is poisoned or drunk.",
+  "note.pukkaSuspended": "The Pukka's ability is suspended: the Pukka is poisoned or drunk.",
+  "note.exorcistBlocked":
+    "The Exorcist chose the Demon. The Demon learns who the Exorcist is and does not wake.",
+  "note.characterChanged": "The character changed before the wake.",
+  "note.abilityUnused": "The ability was not used.",
+  "note.philosopherOwner": "{owner} ({role}) is drunk: the Philosopher has the ability.",
+  "note.philosopherAbility": "The Philosopher gains the ability: {role}.",
+  "note.characterBecame": "{name} becomes: {role}.",
+  "note.characterSwapPoisoned": "{actor} and {target} swap characters; {target} is poisoned.",
+  "note.characterSwap": "{first} and {second} swap characters.",
+  "note.klutzNotEvil": "{name} is not evil: the Klutz's team does not lose.",
+  "note.klutzEvil": "{name} is evil: the Klutz's team loses.",
+  "note.madness": "{name} must be mad about the {role} role until the next night.",
+  "note.actorDied": "The player died before their step.",
+  "note.poisoned": "Poisoned: {name}.",
+  "note.protected": "Protected tonight: {name}.",
+  "note.butlerMaster": "Tomorrow they vote only with: {name}.",
+  "note.impKilled": "Died: {name}.",
+  "note.finished": "Step completed.",
+  "note.skipped": "Skipped: {reason}",
+  "note.skippedNone": "Skipped",
+  "note.demonChanged":
+    "The Demon changed. Wake the new Demon and show the Devil token. The new Demon does not act again tonight.",
+  "note.roleChangedDemon": "The role changed before the step: it is now the Demon.",
 };

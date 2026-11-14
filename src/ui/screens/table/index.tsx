@@ -25,7 +25,7 @@ export function TableScreen() {
   const ports = useShellPorts();
   const snapshot = useGame(ports.game);
   const state = snapshot.state;
-  const [guidedPreference] = useState(() => ports.prefs.read("pg.guided") === "true");
+  const [guidedPreference] = useState(() => ports.prefs.read("pg.guided") !== "false");
   // Read the recovery record once, for the step that is current at mount: a
   // reload mid-night reopens it with the host's untouched choices.
   const [restoredDraft] = useState(() => {
@@ -136,6 +136,10 @@ export function TableScreen() {
       drafts.setInfoKey(key);
       drafts.setOverlay("info");
     },
+    closeInfo: () => {
+      drafts.setInfoKey(null);
+      drafts.setOverlay("step");
+    },
     openCorrection,
     selectSeat: (playerId) => {
       if (state.phase === "day") {
@@ -190,7 +194,12 @@ export function TableScreen() {
       actions.startNewGame();
     },
     startNewGame: () => {
-      run({ type: "newGame", payload: { count: 8 } });
+      const result = run({ type: "newGame", payload: { count: 8 } });
+      if (result.status !== "allowed") {
+        drafts.setArmedNew(false);
+        return;
+      }
+      drafts.setArmedNew(false);
       ports.router.go("/bag");
     },
     applyImport: () => {

@@ -93,15 +93,6 @@ export function SidePanel({ view, className = "" }: { view: TableView; className
           <button className="btn" type="button" data-act="import" onClick={actions.openImport}>
             {t("import")}
           </button>
-          <button
-            className="btn"
-            type="button"
-            data-act="undo"
-            disabled={!ports.history.canUndo()}
-            onClick={actions.undo}
-          >
-            {t("undo")}
-          </button>
         </div>
         <p className={MUTED}>{t("exportWarning")}</p>
       </section>

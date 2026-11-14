@@ -20,6 +20,7 @@ export {
   soldierSafe,
   mayorRedirects,
   butlerMaster,
+  bmrDrunkEffect,
 } from "./effects.ts";
 export type { InfoResult } from "./information.ts";
 export {

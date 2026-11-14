@@ -22,6 +22,8 @@ export interface TableActions {
   /** Opens the private full-screen role card of one player. */
   openPlayerCard(id: string): void;
   openInfo(key: string): void;
+  /** Closes the information card and returns to the step sheet. */
+  closeInfo(): void;
   openCorrection(playerId: string): void;
   /** Selects or deselects a target on the table for the current night step. */
   selectSeat(playerId: string): void;

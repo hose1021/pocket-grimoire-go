@@ -147,7 +147,7 @@ export function PlayerScreen() {
                 data-act="back-confirm"
                 onClick={() => ports.router.go("/table")}
               >
-                {t("playerBack")}
+                {t("backToTableConfirm")}
               </button>
               <DialogClose>
                 <button className={`${NEUTRAL} ml-2`} type="button" data-act="back-cancel">

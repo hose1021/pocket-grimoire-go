@@ -66,10 +66,13 @@ export function seatGeometry(count: number, options: RingOptions = {}): SeatGeom
 export type SeatBadge =
   | "acting"
   | "nominated"
+  | "scheduled"
   | "dead"
+  | "registered-dead"
   | "ghost-vote"
   | "no-ghost-vote"
   | "poison"
+  | "drunk"
   | "protection";
 
 export interface SeatState {
@@ -78,27 +81,37 @@ export interface SeatState {
   acting?: boolean;
   nominated?: boolean;
   impaired?: boolean;
+  drunk?: boolean;
+  poisoned?: boolean;
   protected?: boolean;
+  scheduledDeath?: boolean;
+  registeredDead?: boolean;
 }
 
 /** The locale key and the token tone of each table badge. */
 export const SEAT_BADGE_KEY: Record<SeatBadge, string> = {
   acting: "ui.activeSeat",
   nominated: "ui.nominatedSeat",
+  scheduled: "ui.consequence.scheduled",
   dead: "ui.dead",
+  "registered-dead": "ui.registeredDead",
   "ghost-vote": "ui.ghostVote",
   "no-ghost-vote": "ui.noGhostVote",
   poison: "ui.poisoned",
+  drunk: "ui.drunk",
   protection: "ui.protected",
 };
 
 export const SEAT_BADGE_TONE: Record<SeatBadge, string> = {
   acting: "border-amber/60 text-amber",
   nominated: "border-crimson text-danger",
+  scheduled: "border-crimson/60 text-danger",
   dead: "border-edge-2 text-muted",
+  "registered-dead": "border-brass/60 text-brass",
   "ghost-vote": "border-townsfolk/60 text-townsfolk",
   "no-ghost-vote": "border-edge-2 text-muted",
   poison: "border-outsider/60 text-outsider",
+  drunk: "border-amber-2/60 text-amber-2",
   protection: "border-amber-2/60 text-amber-2",
 };
 
@@ -110,11 +123,14 @@ export function seatBadges(state: SeatState): SeatBadge[] {
   const badges: SeatBadge[] = [];
   if (state.acting) badges.push("acting");
   if (state.nominated) badges.push("nominated");
+  if (state.scheduledDeath) badges.push("scheduled");
   if (!state.alive) {
     badges.push("dead");
     badges.push(state.voteToken === false ? "no-ghost-vote" : "ghost-vote");
   }
-  if (state.impaired) badges.push("poison");
+  if (state.registeredDead) badges.push("registered-dead");
+  if (state.drunk) badges.push("drunk");
+  else if (state.poisoned || state.impaired) badges.push("poison");
   if (state.protected) badges.push("protection");
   return badges;
 }

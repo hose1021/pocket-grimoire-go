@@ -162,9 +162,11 @@ state and optional pending Demon-heir choice.
   curated suggestions for every count in each official scenario; Drunk
   real/shown split; three good bluffs not in play,
   excluding the Drunk mask; bluffs and the Drunk mask are role tokens with
-  names under them; 5–6 player games have no bluffs. Named pools and exact
-  bags can be saved, reloaded, exported and imported. Legal does not mean
-  balanced.
+  names under them; the Drunk mask has its own labelled section outside the
+  Demon bluff group; 5–6 player games have no bluffs. The player-count stepper
+  moves exactly one per activation, including after a script switch. Named
+  pools and exact bags can be saved, reloaded, exported and imported. Legal
+  does not mean balanced.
 - `/seat`: ring in seat order, swap, shuffle, undo; names only, after players
   have entered them in `/player`. New games start with blank names; the player
   flow requires a non-empty name before it claims a number.
@@ -173,17 +175,24 @@ state and optional pending Demon-heir choice.
 - `/table`: one host table. The app bar stays above a scrollable stage that
   holds an oval of seats around a centre hub, with the fixed action dock below
   it. Every seat keeps the player name at 360–390 px, role artwork on the
-  medallion and coloured text state badges (acting, nominated, dead, ghost
-  vote, poison, protection); the dock carries the phase, the current step, the
-  actor, the engine guidance, the active effects, the consequence preview and
-  the rejection reason. The hub shows the day's nomination, the recorded votes
-  and the `ceil(living / 2)` threshold, the execution result and the dawn
-  report. The host records votes, executes and ends the day through the
-  existing commands; the engine remains the authority and a refused command
-  shows its reason. A full-screen player card shows a role card, the night
+  medallion and coloured text state badges (acting, nominated, scheduled
+  death, dead, registered death, ghost vote, poison, protection); an effect
+  badge names its source role when the state records one. The dock carries the
+  phase, the current step, the actor, the engine guidance, the active effects,
+  the consequence preview and the rejection reason. The hub shows the day's
+  nomination, the recorded votes and the `ceil(living / 2)` threshold, the
+  execution result and the dawn report; dismissing the dawn shows the active
+  nomination or an explicit no-nomination state. The day-help sheet carries
+  only the role forms. The day dock has exactly three actions: execute the
+  selected player, end the day without execution, and day help. Nominations
+  and votes stay live at the table; the app records only the execution result
+  and keeps an imported nomination and the threshold read-only. The engine
+  remains the authority and a refused command shows its reason. A full-screen player card shows a role card, the night
   information or a host-entered template: the Drunk sees the believed role and
   a poisoned or drunk actor gets only the template. Host notes, the timer,
-  undo, import and export live in the table menu. Win and review gate stay.
+  undo, import and export live in the table menu. The over panel names the
+  actual win cause, including a Demon execution. The host-adjudicated tracking
+  warning appears once per screen. Win and review gate stay.
 - `/player`: number picker; a tap on a free number shows the shown role with
   the auto-hide deadline; name entry; saving the name returns to the number
   picker, which offers seat arrangement once every number is claimed; warning

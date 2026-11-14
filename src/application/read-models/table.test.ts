@@ -307,6 +307,33 @@ test("a seat projection reports a poisoned chef, a soldier and a butler master",
   assert.equal(seatProjection(game, "2").safeFromAttack, true);
 });
 
+test("a seat projection exposes a scheduled death, a registered death and an effect source", () => {
+  const game = scene();
+  game.effects.push({
+    id: "pending-death",
+    kind: "pukka-death",
+    sourceId: "1",
+    targetId: "2",
+    start: { phase: "night", number: 1 },
+    expires: null,
+    active: true,
+  });
+  game.effects.push({
+    id: "drunk-source",
+    kind: "drunk",
+    sourceId: "1",
+    targetId: "3",
+    start: { phase: "night", number: 1 },
+    expires: null,
+    active: true,
+  });
+  game.players["4"]!.registeredDead = true;
+  assert.equal(seatProjection(game, "2").scheduledDeath, true);
+  assert.equal(seatProjection(game, "3").drunk, true);
+  assert.equal(seatProjection(game, "3").drunkSourceRoleId, "mayor");
+  assert.equal(seatProjection(game, "4").registeredDead, true);
+});
+
 test("the setup and secrets projections report a broken bag", () => {
   const game = scene();
   assert.deepEqual(setupProjection(game).errors, setupErrors(game));

@@ -4,6 +4,7 @@
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { livingPlayers, orderedPlayers, playerById } from "../../../core/model/state.ts";
+import { isManualScript } from "../../../core/model/rules.ts";
 import { tableProjection } from "../../../application/read-models/table.ts";
 import { displayName, previewIdentity, stepTitle, timerText } from "./helpers.ts";
 import { ConsequenceList } from "./parts.tsx";
@@ -60,6 +61,9 @@ export function TableDock({ view }: { view: TableView }) {
   const executed = state.day.execution ? playerById(state, state.day.execution.playerId) : null;
   const saintWarning =
     state.phase === "day" && !state.day.execution && !state.day.ended && target?.roleId === "saint";
+  const registeredDead = orderedPlayers(state).filter(
+    (player) => player.alive && player.registeredDead,
+  );
   const guide = step ? ports.guidance.for(step) : null;
   const outcome = state.phase === "night" ? (step ? stepPreview : nightEndPreview) : dayEndPreview;
   const dockStep =
@@ -87,6 +91,7 @@ export function TableDock({ view }: { view: TableView }) {
     <footer
       className="relative z-20 w-full border-t border-edge bg-[linear-gradient(180deg,var(--color-crypt-2),var(--color-crypt)_45%)] px-3 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2"
       data-table-dock
+      data-phase={state.phase}
       aria-label={t("table")}
     >
       <div className="mx-auto grid w-full max-w-[900px] gap-1.5">
@@ -183,9 +188,15 @@ export function TableDock({ view }: { view: TableView }) {
                 · {projection.progress.done + 1} / {projection.progress.total}
               </span>
             ) : null}
-            {hint ? <> — {hint}</> : null}
+            {hint && hint !== dockStep ? <> — {hint}</> : null}
           </span>
         </p>
+
+        {isManualScript(state.script) && (state.phase === "night" || state.phase === "day") ? (
+          <p className="manual-warning m-0 text-[10px] leading-tight text-amber-2">
+            {t("manualOnlyWarning")}
+          </p>
+        ) : null}
 
         {context ? (
           <div className="grid gap-0.5">
@@ -238,9 +249,31 @@ export function TableDock({ view }: { view: TableView }) {
             {stepPreview.result.reason || t("ui.consequence.prevented")}
           </p>
         ) : null}
+        {state.mastermind?.active && state.mastermind.extraDay ? (
+          <p className="m-0 text-[10px] leading-tight text-amber-2" data-warning="mastermind">
+            {t("ui.mastermindExtraDay")}
+          </p>
+        ) : null}
         {saintWarning ? (
           <p className="m-0 text-[10px] leading-tight text-amber-2" data-warning="saint">
             {t("ui.saintExecution")}
+          </p>
+        ) : null}
+        {state.phase === "day" &&
+        !state.day.execution &&
+        !state.day.ended &&
+        registeredDead.length ? (
+          <p className="m-0 text-[10px] leading-tight text-amber-2" data-warning="zombuul">
+            {t("ui.zombuulExecution", {
+              names: registeredDead.map((player) => displayName(player, t)).join(", "),
+            })}
+          </p>
+        ) : null}
+        {step?.previousTarget ? (
+          <p className="m-0 text-[10px] leading-tight text-amber-2" data-dock-previous-target>
+            {t("ui.previousTargetBlocked", {
+              name: displayName(playerById(state, step.previousTarget), t),
+            })}
           </p>
         ) : null}
 
@@ -343,7 +376,7 @@ export function TableDock({ view }: { view: TableView }) {
           </p>
         ) : null}
         <p className="m-0 text-[9.5px] uppercase tracking-[.1em] text-muted" data-dock-threshold>
-          {t("threshold")} {projection.threshold}
+          {t("threshold")} {projection.threshold} {t("votes")}
         </p>
       </div>
     </footer>

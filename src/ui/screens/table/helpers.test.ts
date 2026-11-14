@@ -24,6 +24,7 @@ import {
   stepTitle,
   timerText,
   toPreviewOutcome,
+  winReasonKey,
 } from "./helpers.ts";
 import { dawnReport, seatBadges, seatGeometry } from "./ring.ts";
 
@@ -309,6 +310,23 @@ test("seatBadges lists every true table state in reading order", () => {
     "protection",
   ]);
   assert.deepEqual(seatBadges({ alive: true }), []);
+  assert.deepEqual(seatBadges({ alive: true, scheduledDeath: true }), ["scheduled"]);
+  assert.deepEqual(seatBadges({ alive: true, registeredDead: true }), ["registered-dead"]);
+  assert.deepEqual(seatBadges({ alive: true, scheduledDeath: true, registeredDead: true }), [
+    "scheduled",
+    "registered-dead",
+  ]);
+});
+
+test("winReasonKey separates an executed Demon from a night death", () => {
+  const game = createGame(5);
+  game.players["1"]!.roleId = "imp";
+  game.day.execution = { playerId: "1", cause: "execution", at: new Date().toISOString() };
+  assert.equal(winReasonKey(game, { reason: "demon-dead" }), "winReason.demon-executed");
+  assert.equal(winReasonKey(game, { reason: "saint" }), "winReason.saint");
+  game.players["1"]!.roleId = "chef";
+  assert.equal(winReasonKey(game, { reason: "demon-dead" }), "winReason.demon-dead");
+  assert.equal(winReasonKey(game, null), "");
 });
 
 test("dawnReport names the night deaths and counts the survivors", () => {

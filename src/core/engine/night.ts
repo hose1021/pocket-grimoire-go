@@ -155,6 +155,18 @@ export function infoKindFor(roleId: RoleId | null): string {
   );
 }
 
+/** Sets the console key and the persisted fallback for one step note. */
+export function setStepNote(
+  step: NightStep,
+  key: string,
+  vars: Record<string, string | number> | null,
+  fallback: string,
+): void {
+  step.noteKey = key;
+  step.noteVars = vars;
+  step.note = fallback;
+}
+
 export function makeRoleStep(
   state: GameState,
   sequenceIndex: number,
@@ -333,7 +345,7 @@ export function pruneDeadSteps(state: GameState) {
     if (minionRetainsAbility(state, actor.id)) continue;
     step.done = true;
     step.skipped = true;
-    step.note = "Игрок погиб до своего шага.";
+    setStepNote(step, "note.actorDied", null, "Игрок погиб до своего шага.");
     addLog(state, {
       secret: true,
       kind: "night",
@@ -385,6 +397,7 @@ export function appendConditionalSteps(state: GameState) {
       state,
       makeSystemStep(state, order, "demonchange", {
         note: "Демон сменился. Разбудите нового Демона и покажите жетон Чёрта. Новый Демон не действует этой ночью повторно.",
+        noteKey: "note.demonChanged",
       }),
     );
   }
@@ -464,7 +477,7 @@ export function completeStep(state: GameState, key: string, options: NightOption
   ) {
     step.done = true;
     step.skipped = true;
-    step.note = "Игрок погиб до своего шага.";
+    setStepNote(step, "note.actorDied", null, "Игрок погиб до своего шага.");
     return { ok: false, errorCode: "error.38", error: "Игрок погиб до своего шага." };
   }
 
@@ -567,7 +580,12 @@ export function completeStep(state: GameState, key: string, options: NightOption
 
   if (role === "poisoner") {
     if (isImpaired(state, actor.id, at)) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
     } else {
       state.effects.forEach((effect) => {
         if (effect.kind === "poison" && effect.sourceId === actor.id) effect.active = false;
@@ -581,14 +599,24 @@ export function completeStep(state: GameState, key: string, options: NightOption
         expires: { phase: "night", number: at.number + 1 },
         active: true,
       });
-      step.note = "Отравлен: " + seatName(state, targets[0]!) + ".";
+      setStepNote(
+        step,
+        "note.poisoned",
+        { name: seatName(state, targets[0]!) },
+        "Отравлен: " + seatName(state, targets[0]!) + ".",
+      );
     }
     return finishStep(state, step, options, targets, at);
   }
 
   if (role === "monk") {
     if (isImpaired(state, actor.id, at)) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
     } else {
       state.effects.forEach((effect) => {
         if (effect.kind === "protected" && effect.sourceId === actor.id) effect.active = false;
@@ -602,7 +630,12 @@ export function completeStep(state: GameState, key: string, options: NightOption
         expires: { phase: "day", number: at.number },
         active: true,
       });
-      step.note = "Защищён этой ночью: " + seatName(state, targets[0]!) + ".";
+      setStepNote(
+        step,
+        "note.protected",
+        { name: seatName(state, targets[0]!) },
+        "Защищён этой ночью: " + seatName(state, targets[0]!) + ".",
+      );
     }
     return finishStep(state, step, options, targets, at);
   }
@@ -619,9 +652,21 @@ export function completeStep(state: GameState, key: string, options: NightOption
       expires: { phase: "night", number: at.number + 1 },
       active: !impaired,
     });
-    step.note = impaired
-      ? "Способность не сработала: игрок отравлен или пьян."
-      : "Завтра голосует только вместе с: " + seatName(state, targets[0]!) + ".";
+    if (impaired) {
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
+    } else {
+      setStepNote(
+        step,
+        "note.butlerMaster",
+        { name: seatName(state, targets[0]!) },
+        "Завтра голосует только вместе с: " + seatName(state, targets[0]!) + ".",
+      );
+    }
     return finishStep(state, step, options, targets, at);
   }
 
@@ -642,9 +687,16 @@ export function completeStep(state: GameState, key: string, options: NightOption
       };
     }
     step.result = attack;
-    step.note = attack.noDeath
-      ? attack.reason || ""
-      : "Погиб: " + seatName(state, attack.deathId || "") + ".";
+    if (attack.noDeath) {
+      step.note = attack.reason || "";
+    } else {
+      setStepNote(
+        step,
+        "note.impKilled",
+        { name: seatName(state, attack.deathId || "") },
+        "Погиб: " + seatName(state, attack.deathId || "") + ".",
+      );
+    }
     step.done = true;
     step.completedAt = nowIso();
     step.given = null;
@@ -740,12 +792,12 @@ export function finishStep(
   step.impaired = step.actorId ? isImpaired(state, step.actorId, at) : false;
   step.done = true;
   step.completedAt = nowIso();
-  if (!step.note) step.note = "Шаг выполнен.";
+  if (!step.note) setStepNote(step, "note.finished", null, "Шаг выполнен.");
   addLog(state, {
     secret: true,
     kind: "night",
     title: (step.roleId ? roleLabel(step.roleId) : step.system) || "Ночной шаг",
-    detail: step.note,
+    detail: step.note ?? "",
   });
   appendConditionalSteps(state);
   checkWin(state);
@@ -833,7 +885,11 @@ export function skipStep(state: GameState, key: string, reason: string = "") {
   const note = String(reason || "").trim();
   step.skipped = true;
   step.done = true;
-  step.note = note ? "Пропущено: " + note : "Пропущено";
+  if (note) {
+    setStepNote(step, "note.skipped", { reason: note }, "Пропущено: " + note);
+  } else {
+    setStepNote(step, "note.skippedNone", null, "Пропущено");
+  }
   addLog(state, {
     secret: true,
     kind: "night",

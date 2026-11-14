@@ -36,6 +36,7 @@ import { livingPlayers, orderedPlayers, playerById, realTeamOf } from "../model/
 import { addLog, currentAt, dayAt, insertStepInto, nightAt } from "./context.ts";
 import { checkWin, evilTwinPair, kill, setWinner } from "./death.ts";
 import { activeEffects, isImpaired } from "./effects.ts";
+import { setStepNote } from "./night.ts";
 import { minionRetainsAbility, vigormortisActive } from "./retention.ts";
 
 const DEMON_ROLES = new Set(["fanggu", "nodashii", "vigormortis", "vortox"]);
@@ -449,7 +450,7 @@ function requeueForCharacter(
     if (step.actorId !== player.id) continue;
     step.done = true;
     step.skipped = true;
-    step.note = "Персонаж сменился до пробуждения.";
+    setStepNote(step, "note.characterChanged", null, "Персонаж сменился до пробуждения.");
   }
   if (state.phase !== "night" || !player.roleId) return;
   const night = nightAt(state).number;
@@ -892,7 +893,7 @@ export function completeSvStep(
   if (step.roleId === "philosopher") {
     const roleId = options.roleId || null;
     if (!roleId) {
-      step.note = "Способность не использована.";
+      setStepNote(step, "note.abilityUnused", null, "Способность не использована.");
       return { ok: true };
     }
     if (!GOOD_ROLES(state).includes(roleId)) {
@@ -900,15 +901,32 @@ export function completeSvStep(
     }
     actor.used.philosopher = true;
     if (impaired) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
       return { ok: true };
     }
     actor.used.philosopherAbility = roleId;
     const owner = holderOf(state, roleId);
     reconcilePhilosopherDrunk(state);
-    step.note = owner
-      ? owner.name + " (" + roleLabel(roleId) + ") пьян: способность у Философа."
-      : "Философ получает способность: " + roleLabel(roleId) + ".";
+    if (owner) {
+      setStepNote(
+        step,
+        "note.philosopherOwner",
+        { owner: owner.name, role: roleLabel(roleId) },
+        owner.name + " (" + roleLabel(roleId) + ") пьян: способность у Философа.",
+      );
+    } else {
+      setStepNote(
+        step,
+        "note.philosopherAbility",
+        { role: roleLabel(roleId) },
+        "Философ получает способность: " + roleLabel(roleId) + ".",
+      );
+    }
     const borrowed = philosopherAbilityStep(state, actor);
     if (borrowed && !state.night.queue.some((candidate) => candidate.key === borrowed.key)) {
       insertStepInto(state.night.queue, borrowed);
@@ -920,7 +938,12 @@ export function completeSvStep(
     const target = targets[0] ? playerById(state, targets[0]) : null;
     if (!target) return { ok: false, errorCode: "error.31", error: "Цель не найдена." };
     if (impaired) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
       return { ok: true };
     }
     const roleId = options.roleId || null;
@@ -935,11 +958,15 @@ export function completeSvStep(
       return { ok: false, errorCode: "error.52", error: "Эта роль уже в игре." };
     }
     replaceCharacter(state, target.id, roleId, { order, currentKey: step.key });
-    step.note =
+    setStepNote(
+      step,
+      "note.characterBecame",
+      { name: target.name, role: roleLabel(roleId) },
       target.name +
-      " становится: " +
-      roleLabel(roleId) +
-      (roleTeam(roleId) === "demon" ? ". Смерти этой ночью выбирает ведущий." : ".");
+        " становится: " +
+        roleLabel(roleId) +
+        (roleTeam(roleId) === "demon" ? ". Смерти этой ночью выбирает ведущий." : "."),
+    );
     return { ok: true };
   }
 
@@ -969,8 +996,12 @@ export function completeSvStep(
           active: true,
         });
       }
-      step.note =
-        actor.name + " и " + target.name + " меняются персонажами; " + target.name + " отравлен.";
+      setStepNote(
+        step,
+        "note.characterSwapPoisoned",
+        { actor: actor.name, target: target.name },
+        actor.name + " и " + target.name + " меняются персонажами; " + target.name + " отравлен.",
+      );
     }
     return { ok: true };
   }
@@ -988,7 +1019,12 @@ export function completeSvStep(
       return { ok: false, errorCode: "error.53", error: "Нельзя выбрать другого Демона." };
     }
     swapCharacters(state, first, second, { order, currentKey: step.key });
-    step.note = first.name + " и " + second.name + " меняются персонажами.";
+    setStepNote(
+      step,
+      "note.characterSwap",
+      { first: first.name, second: second.name },
+      first.name + " и " + second.name + " меняются персонажами.",
+    );
     return { ok: true };
   }
 
@@ -1000,18 +1036,33 @@ export function completeSvStep(
     }
     actor.used.klutz = true;
     if (impaired) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
       return { ok: true };
     }
     // "if they are evil, your team loses" (r1758): the trigger is the target's
     // evil alignment, not a comparison with the Klutz's own team. An evil
     // Klutz therefore loses for evil and good wins.
     if (realTeamOf(target) !== "evil") {
-      step.note = target.name + " не злой: команда Растяпы не проигрывает.";
+      setStepNote(
+        step,
+        "note.klutzNotEvil",
+        { name: target.name },
+        target.name + " не злой: команда Растяпы не проигрывает.",
+      );
       return { ok: true };
     }
     const klutzTeam = realTeamOf(actor) === "evil" ? "evil" : "good";
-    step.note = target.name + " злой: команда Растяпы проигрывает.";
+    setStepNote(
+      step,
+      "note.klutzEvil",
+      { name: target.name },
+      target.name + " злой: команда Растяпы проигрывает.",
+    );
     setWinner(state, klutzTeam === "evil" ? "good" : "evil", "klutz");
     return { ok: true };
   }
@@ -1063,8 +1114,12 @@ export function completeSvStep(
         expires: { phase: "night", number: at.number + 1 },
         active: true,
       });
-      step.note =
-        target.name + " должен быть «помешан» на роли " + roleLabel(roleId) + " до следующей ночи.";
+      setStepNote(
+        step,
+        "note.madness",
+        { name: target.name, role: roleLabel(roleId) },
+        target.name + " должен быть «помешан» на роли " + roleLabel(roleId) + " до следующей ночи.",
+      );
     }
   }
   if (step.roleId === "sweetheart" && targets[0] && !impaired) {

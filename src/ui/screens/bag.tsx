@@ -276,8 +276,13 @@ export function BagScreen() {
     setBagError("");
   };
 
+  const countRef = useRef(state.setup.count);
+  useEffect(() => {
+    countRef.current = state.setup.count;
+  }, [state.setup.count]);
   const setCount = (next: number) => {
-    if (next < MIN || next > MAX || next === state.setup.count) return;
+    if (next < MIN || next > MAX || next === countRef.current) return;
+    countRef.current = next;
     if (hasGame && !window.confirm(t("ui.changeCount"))) return;
     pushUndo();
     const kept = ports.presets.resize({
@@ -2064,7 +2069,7 @@ export function BagScreen() {
         type="button"
         data-count="-1"
         aria-label={t("ui.fewer")}
-        onClick={() => setCount(count - 1)}
+        onClick={() => setCount(countRef.current - 1)}
       >
         −
       </button>
@@ -2074,7 +2079,7 @@ export function BagScreen() {
         type="button"
         data-count="1"
         aria-label={t("ui.more")}
-        onClick={() => setCount(count + 1)}
+        onClick={() => setCount(countRef.current + 1)}
       >
         +
       </button>
@@ -2297,13 +2302,29 @@ export function BagScreen() {
           </div>
 
           <aside className="grid min-w-0 content-start gap-2.5 border-l border-edge bg-gradient-to-b from-crypt-2 to-crypt p-3.5 max-[1240px]:col-span-2 max-[1240px]:border-l-0 max-[1240px]:border-t max-[900px]:col-span-1">
+            {state.setup.roles.includes("drunk") ? (
+              <section
+                aria-labelledby="bag-drunk-mask"
+                className="rounded-md border border-edge bg-crypt-2 p-3"
+              >
+                {sectionHead(
+                  "",
+                  t("drunkShown"),
+                  t("ui.drunkMaskHint"),
+                  null,
+                  "h2",
+                  "bag-drunk-mask",
+                )}
+                <div className="grid gap-4">{drunkMarkup()}</div>
+              </section>
+            ) : null}
             <section
               aria-labelledby="bag-bluffs"
               className="rounded-md border border-edge bg-crypt-2 p-3"
             >
               {sectionHead(
                 "",
-                t("bluffs") + (state.setup.roles.includes("drunk") ? " · " + t("drunkShown") : ""),
+                t("bluffs"),
                 null,
                 <b className="text-[9px] font-semibold uppercase tracking-[.06em] text-text">
                   {state.setup.bluffs.length}/{requiredBluffs(count)}
@@ -2311,10 +2332,7 @@ export function BagScreen() {
                 "h2",
                 "bag-bluffs",
               )}
-              <div className="grid gap-4">
-                {drunkMarkup()}
-                {bluffsMarkup()}
-              </div>
+              <div className="grid gap-4">{bluffsMarkup()}</div>
             </section>
 
             <section

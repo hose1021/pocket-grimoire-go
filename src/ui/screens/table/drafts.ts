@@ -18,8 +18,6 @@ export type Overlay =
   | "correction"
   | "export"
   | "import"
-  | "nomination"
-  | "votes"
   | "day"
   | null;
 

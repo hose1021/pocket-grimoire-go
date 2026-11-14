@@ -9,6 +9,7 @@ type StepSpec = {
   canKill?: boolean;
   canResurrect?: boolean;
   note?: string | null;
+  noteKey?: string | null;
   roleChoices?: RoleId[];
   previousTarget?: string;
   [key: string]: unknown;
@@ -42,6 +43,7 @@ import {
 import { addLog, nightAt, currentAt, cycleOf, insertStepInto } from "./context.ts";
 import { kill, checkWin } from "./death.ts";
 import { effectActive, isImpaired } from "./effects.ts";
+import { setStepNote } from "./night.ts";
 
 const DEMON_ROLES = new Set(["po", "pukka", "shabaloth", "zombuul"]);
 
@@ -187,22 +189,22 @@ function bmrStepSpec(roleId: RoleId, night: number): StepSpec | null {
       {
         sailor: {
           targetMode: "one-any",
-          note: "Choose an alive player. Decide whether the Sailor or that player is drunk until dusk.",
+          noteKey: "note.bmr.sailor",
         },
         courtier: {
           targetMode: "none",
           optional: true,
-          note: "Once per game: choose a character; they are drunk for 3 nights and 3 days.",
+          noteKey: "note.bmr.courtier",
         },
         godfather: { targetMode: "none", infoKind: "note" },
         devilsadvocate: {
           targetMode: "one-any",
-          note: "Choose a living player. If they are executed tomorrow, they do not die.",
+          noteKey: "note.bmr.devilAdvocateFirst",
         },
         pukka: {
           targetMode: "one-any",
           canKill: true,
-          note: "Choose a player: they are poisoned. The engine resolves the previous victim's death and applies the new poison.",
+          noteKey: "note.bmr.pukka",
         },
         grandmother: { targetMode: "one-any", infoKind: "character" },
         chambermaid: { targetMode: "two", infoKind: "number" },
@@ -214,93 +216,93 @@ function bmrStepSpec(roleId: RoleId, night: number): StepSpec | null {
     {
       sailor: {
         targetMode: "one-any",
-        note: "Choose an alive player. Decide whether the Sailor or that player is drunk until dusk.",
+        noteKey: "note.bmr.sailor",
       },
       courtier: {
         targetMode: "none",
         optional: true,
-        note: "Once per game: choose a character; they are drunk for 3 nights and 3 days.",
+        noteKey: "note.bmr.courtier",
       },
       innkeeper: {
         targetMode: "two",
-        note: "Choose two players: they are safe tonight. Decide which one is drunk until dusk.",
+        noteKey: "note.bmr.innkeeper",
       },
       gambler: {
         targetMode: "one-any",
         canKill: true,
-        note: "Choose a player and ask for a role guess. If the guess is wrong, the Gambler dies.",
+        noteKey: "note.bmr.gambler",
       },
       devilsadvocate: {
         targetMode: "one-any",
-        note: "Choose a living player (different from last night). If executed tomorrow, they do not die.",
+        noteKey: "note.bmr.devilAdvocateOther",
       },
       lunatic: {
         targetMode: "one-any",
-        note: "The Lunatic chooses a player as if they were the Demon. No one dies; tell the real Demon.",
+        noteKey: "note.bmr.lunatic",
       },
       exorcist: {
         targetMode: "one-any",
-        note: "Choose a player (different from last night). If they are the Demon, the Demon learns who the Exorcist is and does not wake.",
+        noteKey: "note.bmr.exorcist",
       },
       zombuul: {
         targetMode: "one-any",
         canKill: true,
-        note: "No one died today, so the Zombuul may choose a player: they die.",
+        noteKey: "note.bmr.zombuul",
       },
       pukka: {
         targetMode: "one-any",
         canKill: true,
-        note: "Choose a player: they are poisoned. The engine resolves the previous victim's death and applies the new poison.",
+        noteKey: "note.bmr.pukka",
       },
       shabaloth: {
         targetMode: "two",
         canKill: true,
         canResurrect: true,
-        note: "Choose two players: they die. You may resurrect one dead player you chose last night.",
+        noteKey: "note.bmr.shabaloth",
       },
       po: {
         targetMode: "po",
         minTargets: 0,
         maxTargets: 3,
         canKill: true,
-        note: "Choose no one or one player. If the last choice was no one, choose three players tonight.",
+        noteKey: "note.bmr.po",
       },
       assassin: {
         targetMode: "one-any",
         optional: true,
         canKill: true,
-        note: "Once per game: choose a player. They die even if protected.",
+        noteKey: "note.bmr.assassin",
       },
       godfather: {
         targetMode: "one-any",
         canKill: true,
-        note: "An Outsider died today. Choose a player: they die.",
+        noteKey: "note.bmr.godfather",
       },
       gossip: {
         targetMode: "one-any",
         canKill: true,
-        note: "The Gossip's statement was true. Choose a player: they die.",
+        noteKey: "note.bmr.gossip",
       },
       professor: {
         targetMode: "one-any",
         optional: true,
         canResurrect: true,
-        note: "Once per game: choose a dead player. If they are a Townsfolk, they are resurrected.",
+        noteKey: "note.bmr.professor",
       },
       tinker: {
         targetMode: "none",
         canKill: true,
-        note: "The Tinker might die. Record the death only if it happens.",
+        noteKey: "note.bmr.tinker",
       },
       moonchild: {
         targetMode: "one-any",
         canKill: true,
-        note: "The Moonchild chose this player when they died. If the player is good, they die.",
+        noteKey: "note.bmr.moonchild",
       },
       grandmother: {
         targetMode: "none",
         canKill: true,
-        note: "The Demon killed the grandchild. The Grandmother dies.",
+        noteKey: "note.bmr.grandmotherDeath",
       },
       chambermaid: { targetMode: "two", infoKind: "number" },
     }[roleId] || null
@@ -397,6 +399,7 @@ function makeBmrStep(
     canKill: Boolean(spec.canKill),
     canResurrect: Boolean(spec.canResurrect),
     note: spec.note || null,
+    noteKey: spec.noteKey || null,
     targetIds: [],
     registrations: {},
     given: null,
@@ -536,7 +539,10 @@ export function appendBmrConditionalSteps(state: GameState) {
   if (!grandchildDeath) return;
   if (
     state.night.queue.some(
-      (step) => step.roleId === "grandmother" && step.note && step.note.includes("Demon"),
+      (step) =>
+        step.roleId === "grandmother" &&
+        (step.noteKey === "note.bmr.grandmotherDeath" ||
+          Boolean(step.note && step.note.includes("Demon"))),
     )
   )
     return;
@@ -547,7 +553,7 @@ export function appendBmrConditionalSteps(state: GameState) {
   const step = makeBmrStep(state, slot < 0 ? sequence.length : slot, "grandmother", grandmother, {
     targetMode: "none",
     canKill: true,
-    note: "The Demon killed the grandchild. The Grandmother dies.",
+    noteKey: "note.bmr.grandmotherDeath",
   });
   insertStepInto(state.night.queue, step);
   addLog(state, {
@@ -573,8 +579,12 @@ export function completeBmrStep(state: GameState, step: NightStep, options: BmrO
           pending.suspended = "impaired";
         }
       }
-      step.note =
-        "Способность не сработала: Пукка отравлен или пьян. Яд на прежней цели приостановлен.";
+      setStepNote(
+        step,
+        "note.pukkaSuspended",
+        null,
+        "Способность не сработала: Пукка отравлен или пьян. Яд на прежней цели приостановлен.",
+      );
       step.result = { deaths: [], poisonedId: null, suspended: true };
       return;
     }
@@ -721,7 +731,12 @@ export function completeBmrStep(state: GameState, step: NightStep, options: BmrO
     // victim (the Goon) still dies and the Goon still turns evil.
     const goonException = Boolean(step.goonImpaired && step.goonImpairedOnly);
     if (isImpaired(state, actor.id, at) && !goonException) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
       return;
     }
     const target = playerById(state, targets[0]);
@@ -737,7 +752,12 @@ export function completeBmrStep(state: GameState, step: NightStep, options: BmrO
   }
   if (role === "gambler" && actor && targets[0]) {
     if (isImpaired(state, actor.id, at)) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
       return;
     }
     const target = playerById(state, targets[0]);
@@ -758,7 +778,12 @@ export function completeBmrStep(state: GameState, step: NightStep, options: BmrO
     // bookkeeping wake cannot suppress the already-made choice.
     const goonException = Boolean(step.goonImpaired && step.goonImpairedOnly);
     if (isImpaired(state, actor.id, at) && !goonException) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
       return;
     }
     if (target && target.alive && (target.team === "good" || target.team == null)) {
@@ -772,7 +797,12 @@ export function completeBmrStep(state: GameState, step: NightStep, options: BmrO
   }
   if (role === "exorcist" && actor) {
     if (isImpaired(state, actor.id, at)) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
       return;
     }
     const targetId = targets[0];
@@ -787,7 +817,12 @@ export function completeBmrStep(state: GameState, step: NightStep, options: BmrO
       if (demonStep) {
         demonStep.done = true;
         demonStep.skipped = true;
-        demonStep.note = "Экзорцист выбрал Демона. Демон узнаёт Экзорциста и не просыпается.";
+        setStepNote(
+          demonStep,
+          "note.exorcistBlocked",
+          null,
+          "Экзорцист выбрал Демона. Демон узнаёт Экзорциста и не просыпается.",
+        );
       }
       addLog(state, {
         secret: true,
