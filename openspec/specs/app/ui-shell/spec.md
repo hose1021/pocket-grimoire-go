@@ -253,14 +253,15 @@ Navigating away SHALL dispose their listeners, timers and pointer handlers.
 
 ### Requirement: Seat order draft
 
-The seat screen SHALL keep the seat order as a local draft: selecting two seats
-SHALL swap them, dragging a seat onto another SHALL swap them, and shuffle and
-undo SHALL change only the draft. The draft SHALL be committed only by the use
-action. A published state SHALL update the names and role art on the ring, SHALL
-NOT replace a non-empty draft, and SHALL fill an empty draft.
+The seat screen SHALL keep the seat order as a local draft: selecting or dragging
+one seat onto another SHALL swap them, shuffle and undo SHALL change only the
+draft, and the use action SHALL commit it. A published state SHALL update the
+names on the ring without replacing a non-empty draft. The ring, the sidebar and
+the drag ghost SHALL show player names and seat numbers only.
 
-**Source**: `SPEC.md` "Screens"; issue #82
-**Tests**: `scripts/browser-check.mjs`
+**Source**: `SPEC.md` "Screens" and `/seat` "names only"; issue #82; issue #171
+SET8
+**Tests**: `scripts/browser-check.mjs`, `src/ui/screens/seat-projection.test.ts`
 
 #### Scenario: Publish while editing
 
@@ -278,15 +279,24 @@ NOT replace a non-empty draft, and SHALL fill an empty draft.
 - **THEN** their occupants swap, the status line names the result and undo
   restores the previous order
 
+#### Scenario: Names only
+
+- **WHEN** the seat route renders a dealt game
+- **THEN** every seat shows a name and a seat number and no role name, role
+  artwork, team or alive state
+
 ### Requirement: Setup secrets
 
 The secrets screen SHALL edit the one-of-two pairs, the Drunk mask pair and the
 red herring through commands, SHALL list the reminders and the host-only roster,
-and SHALL start the first night only when the secrets are complete. Bad Moon
-Rising and Sects & Violets SHALL render their own setup summaries instead.
+and SHALL start the first night only when the secrets are complete. Each script
+SHALL render its own setup summary and reminder checklist, a manual script SHALL
+render the manual pane, and the Librarian zero and a registering Spy or Recluse
+SHALL extend the offered answers as the scenarios describe.
 
-**Source**: `SPEC.md` `/secrets`; issue #82
-**Tests**: `scripts/browser-check.mjs`
+**Source**: `SPEC.md` `/secrets`; issue #82; issue #171 SET9, SET10, TB2, TB8
+**Tests**: `scripts/browser-check.mjs`, `src/ui/screens/secrets-options.test.ts`,
+`src/core/engine/setup.test.ts`
 
 #### Scenario: Red herring
 
@@ -301,20 +311,48 @@ Rising and Sects & Violets SHALL render their own setup summaries instead.
 
 #### Scenario: Librarian zero
 
-- **WHEN** the Librarian is in play and no Outsider is
-- **THEN** the screen normalizes the zero information once
+- **WHEN** the Librarian is in play and every Outsider in play is a Recluse
+- **THEN** the zero control is offered and the recorded zero is legal
+
+#### Scenario: Drunk shown the Librarian
+
+- **WHEN** the Drunk is shown the Librarian
+- **THEN** the false-information editor offers the zero answer
+
+#### Scenario: Registering Spy or Recluse
+
+- **WHEN** a Spy is in play for a Townsfolk or Outsider answer, or a Recluse is
+  in play for a Minion answer
+- **THEN** the role selector also offers the not-in-play characters of that team
+
+#### Scenario: Mixed manual pool
+
+- **WHEN** a manual script contains Trouble Brewing and Bad Moon Rising roles
+- **THEN** the screen renders the manual secrets pane and not the Bad Moon
+  Rising pane
+
+#### Scenario: Reminder checklist
+
+- **WHEN** the active script is Bad Moon Rising or Sects & Violets and the game
+  is dealt
+- **THEN** the pane lists the Storyteller reminders of every role in play
+
+#### Scenario: Drunk mask label
+
+- **WHEN** the Drunk is in play
+- **THEN** the mask editor states that it sets the Drunk's shown role and is not
+  part of the Demon bluff group
 
 ### Requirement: Bag editor
 
 The bag screen SHALL edit the script pool, the player count, the roles, the
-bluffs and the special setup choices through one bag command, SHALL offer the
-recommended presets, the random picker, the manual picker, the named library and
-the import/export paths, and SHALL deal the bag only when it is legal. The
-manual picker SHALL list every role of the selected script grouped by team and
-SHALL NOT offer a search field or edition and team filters.
+bluffs and the setup choices through one bag command, and SHALL deal only a legal
+bag. It SHALL offer the presets, the random picker, the manual picker, the named
+library and import/export. A rejected load SHALL stay open and explain itself;
+the count stepper SHALL move one player per activation.
 
-**Source**: `SPEC.md` `/bag`; issue #82; owner requirement "manual assembly groups roles"
-**Tests**: `scripts/browser-check.mjs`
+**Source**: `SPEC.md` `/bag`; issue #82; owner requirement "manual assembly groups roles"; issue #171 SET5, SET7
+**Tests**: `scripts/browser-check.mjs`, `src/ui/screens/setup-messages.test.ts`
 
 #### Scenario: Preset
 
@@ -336,6 +374,31 @@ SHALL NOT offer a search field or edition and team filters.
 - **WHEN** the manual picker is active
 - **THEN** every role of the selected script appears under its team heading with
   a count, and no search or edition filter is present
+
+#### Scenario: Rejected library load
+
+- **WHEN** the host loads a saved bag the current script cannot accept
+- **THEN** the library stays open, the reason is shown in the UI language and
+  the saved game is unchanged
+
+#### Scenario: Godfather direction
+
+- **WHEN** the random picker composes a bag with the Godfather at minus one
+  Outsider, or the host switches to that script
+- **THEN** the applied bag keeps the minus-one direction and the team counters
+  stay legal
+
+#### Scenario: One player per activation
+
+- **WHEN** the host activates the count stepper
+- **THEN** the count moves by exactly one, and a cancelled confirmation or a
+  rejected command leaves it where it was
+
+#### Scenario: Count stepper after a script switch
+
+- **WHEN** the host switches to Bad Moon Rising and activates the increase
+  control twice quickly
+- **THEN** the count rises by exactly two from its previous value
 
 ### Requirement: Storyteller console renders in the shell
 
@@ -507,9 +570,11 @@ hide SHALL live in the side panel. The role-card control SHALL open the role car
 ### Requirement: Correction reason and over panel
 
 A correction SHALL require a reason. The over panel SHALL hide the review table
-until used and SHALL require a second confirmation before a new game.
+until used and SHALL require a second confirmation before a new game. After the
+confirmed new game, the console SHALL publish the fresh game before it leaves
+`/table`; no finished-game table, phase or review state SHALL remain visible.
 
-**Source**: `SPEC.md` "Screens" (`/table`); issue #42
+**Source**: `SPEC.md` "Screens" (`/table`); issue #42; [Issue #170](https://github.com/hose1021/grimoria/issues/170)
 **Tests**: `scripts/browser-check.mjs`, `src/core/engine/commands.test.ts`
 
 #### Scenario: Correction reason
@@ -526,6 +591,12 @@ until used and SHALL require a second confirmation before a new game.
 
 - **WHEN** the new game control is used once
 - **THEN** the game is unchanged and the confirmation is shown
+
+#### Scenario: New game clears the table
+
+- **WHEN** the host confirms the new game and the console returns to the table
+- **THEN** the table shows the fresh setup and no finished-game table, phase or
+  review state
 
 ### Requirement: Undo through the shell
 
@@ -1108,3 +1179,221 @@ role sheet and help routes reachable, and no fixed footer dock SHALL render. The
 
 - **WHEN** the console renders at 390 pixels
 - **THEN** no fixed footer navigation is present
+
+### Requirement: Over panel victory copy
+
+The over panel SHALL show a victory line specific to the win cause. An executed
+Demon SHALL read as executed rather than as succession, and a night death,
+inheritance or manual declaration SHALL read as that cause.
+
+**Source**: [Issue #170](https://github.com/hose1021/grimoria/issues/170); `SPEC.md` "Screens" (`/table`)
+**Tests**: `src/ui/i18n/strings.test.ts`, `scripts/browser-check.mjs`
+
+#### Scenario: Demon executed
+
+- **WHEN** the game ends because the Demon was executed and no heir remains
+- **THEN** the over panel says the Demon was executed and does not mention
+  inheritance
+
+#### Scenario: Demon died at night
+
+- **WHEN** the game ends because the Demon died at night and no heir remains
+- **THEN** the over panel names that cause
+
+#### Scenario: Saint execution
+
+- **WHEN** the Saint's execution ends the game
+- **THEN** the over panel says the Saint died by execution
+
+### Requirement: Computed information outranks a static note
+
+The night card and the step sheet SHALL show a step's computed information when
+the engine provides it, and SHALL fall back to the static note key only when the
+computed text is empty. The Demon's step SHALL therefore show the Lunatic's
+report.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS2); [Lunatic](https://wiki.bloodontheclocktower.com/index.php?title=Lunatic)
+**Tests**: `src/ui/screens/table/helpers.test.ts`
+
+#### Scenario: Stored Lunatic report
+
+- **WHEN** the Demon's step carries a computed note naming the Lunatic and the
+  target the Lunatic chose
+- **THEN** the card shows that sentence and does not show the static role note
+
+#### Scenario: Static note only
+
+- **WHEN** the computed note text is empty
+- **THEN** the card shows the localized static note key
+
+### Requirement: Mandatory host decisions block Confirm
+
+A step that names a character SHALL require that character before it can be
+completed, and a Sailor or Innkeeper step SHALL require an explicit drunk pick.
+An empty pick SHALL NOT be interpreted as the first target. The step sheet SHALL
+list every unanswered decision with its own localized reason next to the
+disabled Confirm control.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS5, AS7, AS10); [Courtier](https://wiki.bloodontheclocktower.com/index.php?title=Courtier)
+**Tests**: `src/ui/screens/table/helpers.test.ts`, `src/ui/i18n/strings.test.ts`
+
+#### Scenario: Courtier without a character
+
+- **WHEN** the host opens the Courtier or Gambler step and confirms without
+  choosing a character
+- **THEN** Confirm stays disabled and the sheet names the missing character
+  choice
+
+#### Scenario: Sailor without a drunk pick
+
+- **WHEN** the Sailor step has its target and no drunk pick
+- **THEN** Confirm stays disabled, the drunk select has no "None" entry, and its
+  placeholder is an unanswered state
+
+#### Scenario: Several gaps at once
+
+- **WHEN** the step lacks a target and a character
+- **THEN** the sheet lists both reasons in the order the card explains them
+
+### Requirement: Matching control state
+
+The Mayor redirect select SHALL show the value the completion gate treats as
+chosen, and an unanswered redirect SHALL have an explicit empty state. The
+resurrect select SHALL list only the dead players the engine accepts: the
+Professor's step target, or a Shabaloth target chosen on the immediately
+preceding night.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS8, AS9); [Shabaloth](https://wiki.bloodontheclocktower.com/index.php?title=Shabaloth)
+**Tests**: `src/ui/screens/table/helpers.test.ts`, `src/application/read-models/table.test.ts`
+
+#### Scenario: Mayor attacked
+
+- **WHEN** a healthy Mayor is the Imp's target and the host has not answered
+- **THEN** the select shows its unanswered placeholder and the step stays
+  blocked until the host picks the Mayor's fate
+
+#### Scenario: Legal resurrect targets
+
+- **WHEN** a Shabaloth step offers a resurrect choice after a night with chosen
+  targets
+- **THEN** only the dead players it chose on the preceding night are listed
+
+### Requirement: One execution decision with a preview
+
+The day card and the fixed dock SHALL share one execution target and one
+survival choice, SHALL require a living target, and SHALL preview the execution
+consequences before the command is applied. The preview's pinned identity SHALL
+be reused by the apply command.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS12, AS24)
+**Tests**: `src/ui/screens/table/helpers.test.ts`, `scripts/browser-check.mjs`
+
+#### Scenario: Dead target selected
+
+- **WHEN** the host selects a dead player on the day table
+- **THEN** neither execution surface enables the control
+
+#### Scenario: Survival chosen
+
+- **WHEN** the host ticks the survival control and executes
+- **THEN** the dock sends the same survival value the day card shows, and the
+  consequence preview was visible before the click
+
+### Requirement: Day help holds role forms only
+
+The day-help sheet SHALL contain only the role forms and role panels. The
+madness review, the manual winner declaration and the Tinker day-death control
+SHALL live in the table menu.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS13)
+**Tests**: `scripts/browser-check.mjs`
+
+#### Scenario: Madness is active
+
+- **WHEN** the host opens day help while a madness review is due
+- **THEN** the sheet shows no madness control and no winner declaration
+
+#### Scenario: Madness review
+
+- **WHEN** the host opens the table menu on the same day
+- **THEN** the madness review, its reason field and its actions are available
+
+### Requirement: Seat picker collects the allowed targets
+
+A seat click SHALL toggle the target; a multi-target step SHALL keep adding up
+to its maximum and drop the oldest choice at the limit. The Po's three-target
+step SHALL behave like a two-target step.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (BMR2); [Po](https://wiki.bloodontheclocktower.com/index.php?title=Po)
+**Tests**: `src/ui/screens/table/helpers.test.ts`
+
+#### Scenario: Po chooses three
+
+- **WHEN** the Po step allows three targets and the host taps three seats
+- **THEN** all three are selected, and a fourth tap replaces the oldest
+
+#### Scenario: Single target
+
+- **WHEN** the step allows one target
+- **THEN** a tap replaces the previous choice and a second tap clears it
+
+### Requirement: Pacifist and Tinker day controls
+
+The survival control SHALL name the Pacifist rule when the Pacifist is in play.
+A living Tinker in a script that contains them SHALL have a day-death control in
+the table menu.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (BMR21, BMR22); [Pacifist](https://wiki.bloodontheclocktower.com/index.php?title=Pacifist); [Tinker](https://wiki.bloodontheclocktower.com/index.php?title=Tinker)
+**Tests**: `src/ui/i18n/strings.test.ts`
+
+#### Scenario: Pacifist in play
+
+- **WHEN** the script contains the Pacifist and the host opens the execution
+  controls
+- **THEN** the survival control says that the Pacifist ability applies
+
+#### Scenario: Tinker during the day
+
+- **WHEN** a living Tinker exists and the day has no execution
+- **THEN** the table menu offers a control that announces the Tinker's day death
+
+### Requirement: A dialog never covers the over panel
+
+When the game ends while a console dialog is open, the console SHALL close that
+dialog once, and SHALL keep the export and import dialogs open. After the
+transition the host SHALL still be able to open the roster and the menu over the
+over panel.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) host-assistant follow-up
+**Tests**: `src/ui/screens/table/helpers.test.ts`
+
+#### Scenario: Slayer shot from day help
+
+- **WHEN** the host records a Slayer shot from the day-help sheet and the shot
+  ends the game
+- **THEN** the day-help dialog closes and the over panel is visible without a
+  manual dismissal
+
+#### Scenario: Export dialog
+
+- **WHEN** the game ends while the export dialog is open
+- **THEN** the dialog keeps its export text and stays open
+
+#### Scenario: Roster after the win
+
+- **WHEN** the host opens the roster after the game has ended
+- **THEN** the roster stays open and the over panel is not covered on load
+
+### Requirement: Demo never touches the saved game
+
+The console's demo control SHALL open the `/demo` route and SHALL NOT dispatch a
+new game, a bag update, a deal or seat claims on the saved store.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (SET1)
+**Tests**: `scripts/browser-check.mjs`
+
+#### Scenario: Prepared game on disk
+
+- **WHEN** the host has a prepared game and activates the demo control
+- **THEN** the console leaves for `/demo` and the saved game and undo history
+  are unchanged
