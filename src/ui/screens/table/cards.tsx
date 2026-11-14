@@ -553,8 +553,14 @@ function GivenSelect({
   }
   if (!options.length) return null;
   // A character answer for a healthy Undertaker or Ravenkeeper is a
-  // registration decision, not false information.
-  const label = kind === "role" && !info.impaired ? t("registration") : t("falseInfo");
+  // registration decision, and a missing data source is a plain host answer;
+  // only a false-information decision gets the false-information label.
+  const label =
+    kind === "role" && !info.impaired
+      ? t("registration")
+      : info.hostAnswer && !info.impaired
+        ? t("ui.hostAnswer")
+        : t("falseInfo");
   return (
     <label className={FIELD_BOX}>
       <span className="label">{label}</span>

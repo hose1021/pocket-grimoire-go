@@ -423,6 +423,7 @@ export default {
   "ui.blockSecrets": "Gizli quraşdırma tamamlanmayıb. Gizli bölməni açın.",
   "ui.blockTargets": "Əvvəlcə hədəf seçin: {count}.",
   "ui.blockGiven": "Məlumat üzrə məcburi qərar verilməyib.",
+  "ui.hostAnswer": "Hekayəçinin cavabı",
   "ui.blockRedirect": "Məcburi yönləndirməni seçin.",
   "ui.consequence.target": "Hədəf seçildi",
   "ui.consequence.applied": "Vəziyyət tətbiq edildi",

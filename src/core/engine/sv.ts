@@ -886,6 +886,7 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
         kind: "yes-no",
         impaired,
         needsChoice: true,
+        hostAnswer: true,
         options: [true, false],
         text: "Нет данных о прошедшем дне: ведущий отвечает вручную.",
       };

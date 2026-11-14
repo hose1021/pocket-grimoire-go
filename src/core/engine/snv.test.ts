@@ -2151,6 +2151,8 @@ test("the Flowergirl and Town Crier need a host answer without the ended day", (
   const flowergirl = infoForStep(state, stepFor(state, "flowergirl"));
   assert.equal(flowergirl.kind, "yes-no");
   assert.equal(flowergirl.needsChoice, true, "the missing day is a host answer");
+  assert.equal(flowergirl.hostAnswer, true, "the answer is host-supplied, not false information");
+  assert.equal(flowergirl.impaired, false, "a missing day is not impairment");
   assert.equal(infoForStep(state, stepFor(state, "towncrier")).needsChoice, true);
   const blocked = stepOutcome(completeStep(state, stepFor(state, "flowergirl").key, {}));
   assert.equal(blocked.ok, false);

@@ -14,6 +14,8 @@ export type InfoResult = {
   options?: unknown[];
   text?: string;
   missing?: boolean;
+  /** The host answers because the data source is missing, not because the answer is false. */
+  hostAnswer?: boolean;
   zero?: boolean;
   bluffs?: string[];
   demonId?: string | null;

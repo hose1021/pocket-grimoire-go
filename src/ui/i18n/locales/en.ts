@@ -422,6 +422,7 @@ export default {
   "ui.blockSecrets": "Secret setup is incomplete. Open secret setup.",
   "ui.blockTargets": "Choose {count} target(s) first.",
   "ui.blockGiven": "The mandatory information decision is unanswered.",
+  "ui.hostAnswer": "Storyteller answer",
   "ui.blockRedirect": "Choose the forced redirection.",
   "ui.consequence.target": "Target chosen",
   "ui.consequence.applied": "State applied",

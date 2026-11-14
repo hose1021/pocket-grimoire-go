@@ -427,6 +427,7 @@ export default {
   "ui.blockSecrets": "Секретная настройка не завершена. Откройте «Секреты».",
   "ui.blockTargets": "Сначала выберите цель: {count}.",
   "ui.blockGiven": "Обязательное решение по информации не принято.",
+  "ui.hostAnswer": "Ответ ведущего",
   "ui.blockRedirect": "Выберите принудительное перенаправление.",
   "ui.consequence.target": "Цель выбрана",
   "ui.consequence.applied": "Состояние применено",
