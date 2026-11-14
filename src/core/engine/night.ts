@@ -710,6 +710,16 @@ export function completeStep(state: GameState, key: string, options: NightOption
       };
     }
     step.result = attack;
+    // The redirect is a Storyteller decision: it belongs in the secret journal
+    // even though this branch completes the step itself.
+    if (options.redirectId) {
+      recordHostChoice(
+        state,
+        "mayor-redirect",
+        seatName(state, String(options.redirectId)),
+        actor.id,
+      );
+    }
     if (attack.noDeath) {
       step.note = attack.reason || "";
     } else {

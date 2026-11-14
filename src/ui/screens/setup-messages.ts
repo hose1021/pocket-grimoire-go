@@ -70,7 +70,17 @@ export function setupProblemText(problem: SetupProblem, context: SetupProblemCon
   return localized === key || /\{\w+\}/.test(localized) ? problem.message : localized;
 }
 
-/** The visible reason for a rejected setup command (bag, deal, first night). */
+/**
+ * The visible reason for a rejected setup command (bag, deal, first night).
+ * A catalog entry with a placeholder the caller cannot fill must not render
+ * braces: the engine's own sentence wins instead.
+ */
 export function commandRejectionText(result: PreviewOutcome | null | undefined): string {
-  return rejectionText(rejectionOf(result), t);
+  const rejection = rejectionOf(result);
+  if (!rejection) return "";
+  const localized = rejectionText(rejection, t);
+  if (!/\{\w+\}/.test(localized)) return localized;
+  const message = rejection.text || "";
+  if (message && !/\{\w+\}/.test(message)) return message;
+  return message.replace(/\s*\{\w+\}/g, "").trim();
 }

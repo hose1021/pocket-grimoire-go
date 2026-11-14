@@ -2060,6 +2060,8 @@ test("a Mayor redirect onto the Imp is not the Imp's self-kill", () => {
   assert.equal(state.players["3"].roleId, "scarletwoman", "below five living, nobody inherits");
   assert.equal(state.winner?.team, "good");
   assert.equal(state.winner?.reason, "demon-dead");
+  const redirectChoice = state.log.find((entry) => entry.case === "mayor-redirect");
+  assert.ok(redirectChoice, "the redirect is recorded in the secret journal");
 });
 
 test("the Virgin's first nomination is recorded after a day execution", () => {

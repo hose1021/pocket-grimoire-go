@@ -82,3 +82,16 @@ test("a model-carried role id is rendered as a label", () => {
     { key: "error.bluffs-team", vars: { role: "Imp" } },
   );
 });
+
+test("a rejection with an unfillable placeholder keeps the engine sentence", () => {
+  setUiLang("en");
+  assert.equal(
+    commandRejectionText({
+      status: "rejected",
+      reason: "Эмпат не входит в выбранный сценарий.",
+      errorCode: "outside-script",
+      errors: null,
+    }),
+    "Эмпат не входит в выбранный сценарий.",
+  );
+});
