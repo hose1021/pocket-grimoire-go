@@ -267,6 +267,8 @@ export interface NightStep {
   demonId?: string | null;
   bluffs?: string[];
   registrations?: Record<string, string>;
+  /** Characters the host may name for this step (Courtier, Gambler, Cerenovus, Pit-Hag). */
+  roleChoices?: RoleId[];
   previousTarget?: string;
   given?: Record<string, unknown> | null;
   result?: Record<string, unknown> | null;

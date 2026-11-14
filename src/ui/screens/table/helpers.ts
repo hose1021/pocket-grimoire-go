@@ -446,17 +446,29 @@ export function infoText(
 ): string {
   if (!info) return t("none");
   const roleName = (id: string | null | undefined) => roleNameOf(id, roles);
+  // The engine hint carries a catalog key; the stored Russian sentence is the
+  // fallback for results saved before that key existed.
+  // The engine builds its variables per branch, so a keyed hint can carry
+  // optional values as undefined; the catalogs only read the defined ones.
+  const hintVars = info.textVars
+    ? (Object.fromEntries(
+        Object.entries(info.textVars).filter(([, value]) => value !== undefined),
+      ) as Record<string, string | number>)
+    : undefined;
+  const hint = info.textKey
+    ? t(info.textKey, hintVars) + (info.falsifiedSuffix ? " " + t("note.sv.falseSuffix") : "")
+    : info.text;
   if (info.kind === "note") {
     // A computed note (the Lunatic report attached to the Demon's step) is the
     // live information. A step whose computed text is just its static note
     // keeps the localized key.
-    if (info.text && (info.text !== step.note || !step.noteKey)) return info.text;
+    if (hint && (hint !== step.note || !step.noteKey)) return hint;
     if (step.noteKey) return t(step.noteKey, step.noteVars ?? undefined);
-    return info.text || t("none");
+    return hint || t("none");
   }
   if (info.kind === "one-of-two") {
     if (info.zero) return t("ui.zero");
-    if (!info.roleId) return info.text || t("ui.notSet");
+    if (!info.roleId) return hint || t("ui.notSet");
     const pair = (info.pair || []).map((id) => {
       const player = playerById(state, id);
       return player ? `${displayName(player, t)} (${player.seat})` : id;
@@ -488,7 +500,7 @@ export function infoText(
     const lunatic = info.lunaticId ? playerById(state, info.lunaticId) : null;
     return lunatic ? base + " " + t("lunaticReveal", { name: displayName(lunatic, t) }) : base;
   }
-  return info.text || t("none");
+  return hint || t("none");
 }
 
 /** The command payload keeps an information result as a plain record. */

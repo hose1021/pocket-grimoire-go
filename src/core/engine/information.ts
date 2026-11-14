@@ -13,6 +13,11 @@ export type InfoResult = {
   needsChoice?: boolean;
   options?: unknown[];
   text?: string;
+  /** Catalog key for `text`; the stored Russian sentence stays the fallback. */
+  textKey?: string;
+  textVars?: Record<string, string | number | undefined>;
+  /** Runs of false information end with the shared Storyteller suffix. */
+  falsifiedSuffix?: boolean;
   missing?: boolean;
   /** The host answers because the data source is missing, not because the answer is false. */
   hostAnswer?: boolean;

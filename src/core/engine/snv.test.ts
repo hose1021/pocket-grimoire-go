@@ -2750,3 +2750,26 @@ test("a madness execution can happen during the night", () => {
   assert.equal(result.status, "allowed", JSON.stringify(result));
   assert.equal(state.players["2"].alive, false, "the Storyteller may execute at night");
 });
+
+test("the living new Fang Gu wakes even when the dead old Demon holds a lower seat", () => {
+  const state = make(
+    { 1: "fanggu", 2: "klutz", 3: "clockmaker", 4: "dreamer", 5: "artist", 6: "cerenovus" },
+    { count: 8 },
+  );
+  startNight(state);
+  finishNight(state);
+  assert.equal(endNight(state).ok, true);
+  assert.equal(endDay(state).ok, true);
+  const step = state.night.queue.find((candidate) => candidate.roleId === "fanggu")!;
+  assert.equal(step.actorId, "1", "the original Fang Gu wakes first");
+  completeStep(state, step.key, { targetIds: ["2"] });
+  recordSvOutcome(state, step.key, { deathIds: ["2"] });
+  assert.equal(state.players["2"].roleId, "fanggu", "the Outsider becomes the Fang Gu");
+  assert.equal(state.players["1"].alive, false, "the old Demon dies");
+  finishNight(state);
+  assert.equal(endNight(state).ok, true);
+  assert.equal(endDay(state).ok, true);
+  const next = state.night.queue.find((candidate) => candidate.roleId === "fanggu");
+  assert.ok(next, "the Demon still wakes");
+  assert.equal(next!.actorId, "2", "the living new Fang Gu is the actor");
+});

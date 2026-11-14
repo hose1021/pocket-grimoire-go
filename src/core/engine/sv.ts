@@ -615,7 +615,14 @@ export function buildSvNightQueue(state: GameState): NightStep[] {
     }
     const spec = stepSpec(roleId, night);
     if (!spec) return;
-    const actor = orderedPlayers(state).find((player) => player.roleId === roleId);
+    // A Demon role can have two holders after a Fang Gu jump or a Pit-Hag
+    // change: the dead old Demon and the living new one. The living holder is
+    // the one that wakes.
+    const holders = orderedPlayers(state).filter((player) => player.roleId === roleId);
+    const actor =
+      roleTeam(roleId) === "demon"
+        ? holders.find((player) => player.alive) || holders[0]
+        : holders[0];
     if (!actor || !stepAllowed(state, roleId, actor, night)) return;
     steps.push(makeStep(state, index, roleId, actor, spec));
   });
@@ -728,6 +735,11 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
     const twin = evilTwinPair(state)?.good ?? null;
     return {
       kind: "note",
+      textKey: "note.sv.evilTwin",
+      textVars: {
+        actor: actor ? actor.name : "—",
+        twin: twin ? twin.name + " (" + roleLabel(twin.roleId) + ")" : "—",
+      },
       text:
         "Покажите Близнецам друг друга: " +
         (actor ? actor.name : "—") +
@@ -763,6 +775,9 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
       options: falsified
         ? numberChoices(orderedPlayers(state).length).filter((choice) => choice !== value)
         : [],
+      textKey: "note.sv.clockmaker",
+      textVars: { value },
+      falsifiedSuffix: falsified,
       text:
         "Расстояние от Демона до ближайшего Приспешника: " +
         value +
@@ -782,6 +797,9 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
       options: falsified
         ? numberChoices(orderedPlayers(state).length).filter((choice) => choice !== value)
         : [],
+      textKey: "note.sv.oracle",
+      textVars: { value },
+      falsifiedSuffix: falsified,
       text:
         "Мёртвых злых игроков: " +
         value +
@@ -794,6 +812,9 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
       kind: "note",
       impaired,
       needsChoice: falsified,
+      textKey: target ? "note.sv.dreamer" : "note.sv.dreamerChoose",
+      textVars: target ? { target: target.name } : {},
+      falsifiedSuffix: falsified,
       text: target
         ? "Сон о " +
           target.name +
@@ -813,6 +834,7 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
         kind: "yes-no",
         needsChoice: true,
         options: [true, false],
+        textKey: "note.sv.seamstressChoose",
         text: "Выберите двух игроков.",
       };
     }
@@ -824,6 +846,9 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
       impaired,
       needsChoice: falsified,
       options: falsified ? [true, false].filter((choice) => choice !== same) : [],
+      textKey: same ? "note.sv.seamstressSame" : "note.sv.seamstressDifferent",
+      textVars: { a: a.name, b: b.name },
+      falsifiedSuffix: falsified,
       text:
         a.name +
         " и " +
@@ -839,6 +864,8 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
       kind: "note",
       impaired,
       needsChoice: falsified,
+      textKey: "note.sv.sage",
+      falsifiedSuffix: falsified,
       text:
         "Демон убил Мудреца. Покажите 2 игроков, один из которых — Демон." +
         (falsified
@@ -847,35 +874,44 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
     };
   }
   if (role === "sweetheart") {
-    return { kind: "note", text: "Выберите игрока: он пьян до конца игры." };
+    return {
+      kind: "note",
+      textKey: "note.sv.sweetheart",
+      text: "Выберите игрока: он пьян до конца игры.",
+    };
   }
   if (role === "barber") {
     return {
       kind: "note",
+      textKey: "note.sv.barber",
       text: "Демон может выбрать двух игроков (не Демона) и поменять их роли.",
     };
   }
   if (role === "philosopher") {
     return {
       kind: "note",
+      textKey: "note.sv.philosopher",
       text: "Выберите добрую роль; Философ получает её способность, а её владелец пьян.",
     };
   }
   if (role === "cerenovus") {
     return {
       kind: "note",
+      textKey: "note.sv.cerenovus",
       text: "Выберите игрока и добрую роль: завтра он должен быть «помешан» на этой роли.",
     };
   }
   if (role === "pithag") {
     return {
       kind: "note",
+      textKey: "note.sv.pithag",
       text: "Выберите игрока и роль: если роли нет в игре, он становится ею. Новый Демон убивает по решению ведущего.",
     };
   }
   if (role === "snakecharmer") {
     return {
       kind: "note",
+      textKey: "note.sv.snakecharmer",
       text: "Если выбрали Демона, поменяйте роли и стороны; Демон становится отравлен.",
     };
   }
@@ -888,6 +924,7 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
         needsChoice: true,
         hostAnswer: true,
         options: [true, false],
+        textKey: "note.sv.noDay",
         text: "Нет данных о прошедшем дне: ведущий отвечает вручную.",
       };
     }
@@ -910,6 +947,15 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
       impaired,
       needsChoice: falsified,
       options: falsified ? [true, false].filter((choice) => choice !== value) : [],
+      textKey:
+        role === "flowergirl"
+          ? value
+            ? "note.sv.flowergirlYes"
+            : "note.sv.flowergirlNo"
+          : value
+            ? "note.sv.towncrierYes"
+            : "note.sv.towncrierNo",
+      falsifiedSuffix: falsified,
       text:
         (role === "flowergirl" ? "Демон голосовал сегодня: " : "Приспешник выдвигал сегодня: ") +
         (value ? "да." : "нет.") +
@@ -929,6 +975,9 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
       impaired,
       needsChoice: falsified,
       options: falsified ? numberChoices(5).filter((choice) => choice !== value) : [],
+      textKey: "note.sv.juggler",
+      textVars: { value, total: guesses.length },
+      falsifiedSuffix: falsified,
       text:
         "Жонглёр угадал верно: " +
         value +
@@ -944,6 +993,8 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
       kind: "note",
       impaired,
       needsChoice: falsified,
+      textKey: "note.sv.mathematician",
+      falsifiedSuffix: falsified,
       text:
         "Ведущий считает, у скольких игроков способность сработала некорректно." +
         (falsified ? " Ведущий даёт ложное число." : ""),

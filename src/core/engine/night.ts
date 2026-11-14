@@ -826,12 +826,17 @@ export function finishStep(
   step.done = true;
   step.completedAt = nowIso();
   if (!step.note) setStepNote(step, "note.finished", null, "Шаг выполнен.");
-  addLog(state, {
+  const line = addLog(state, {
     secret: true,
     kind: "night",
     title: (step.roleId ? roleLabel(step.roleId) : step.system) || "Ночной шаг",
     detail: step.note ?? "",
   });
+  // The console renders the localized note instead of the Russian detail.
+  if (step.noteKey) {
+    line.noteKey = step.noteKey;
+    line.noteVars = step.noteVars ?? null;
+  }
   appendConditionalSteps(state);
   checkWin(state);
   return { ok: true, step };

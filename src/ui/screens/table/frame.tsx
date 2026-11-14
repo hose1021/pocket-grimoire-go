@@ -41,9 +41,17 @@ export function SidePanel({ view, className = "" }: { view: TableView; className
           const time = entry.at
             ? new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : "";
+          // A step line carries the catalog key of its note; the Russian detail
+          // stays for lines written before the key existed.
+          const noteVars =
+            entry.noteVars && typeof entry.noteVars === "object"
+              ? (entry.noteVars as Record<string, string | number>)
+              : undefined;
+          const detail =
+            typeof entry.noteKey === "string" ? t(entry.noteKey, noteVars) : entry.detail;
           return {
             title: entry.title,
-            detail: `${entry.phase}${entry.detail ? " · " + entry.detail : ""}`,
+            detail: `${entry.phase}${detail ? " · " + detail : ""}`,
             ...(time ? { time } : {}),
             scope,
             ...(scope === "death" ? { tone: "danger" as const } : {}),

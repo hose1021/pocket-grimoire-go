@@ -1199,7 +1199,12 @@ export function bmrInfoForStep(state: GameState, step: NightStep, options: BmrIn
   }
   if (role === "godfather" && step.kind === "role" && state.night.number === 1) {
     const outsiders = outsiderCharacters(state);
-    return { kind: "note", text: "Изгои в игре: " + (outsiders.join(", ") || "—") + "." };
+    return {
+      kind: "note",
+      textKey: "note.bmr.godfatherOutsiders",
+      textVars: { outsiders: outsiders.join(", ") || "—" },
+      text: "Изгои в игре: " + (outsiders.join(", ") || "—") + ".",
+    };
   }
   if (role === "lunatic") {
     if (state.night.number === 1) {
@@ -1209,6 +1214,8 @@ export function bmrInfoForStep(state: GameState, step: NightStep, options: BmrIn
       ).length;
       return {
         kind: "note",
+        textKey: "note.bmr.lunaticFirst",
+        textVars: { minions, bluffs: bluffs.join(", ") || "—" },
         text:
           "Покажите Безумцу " +
           minions +
@@ -1219,6 +1226,7 @@ export function bmrInfoForStep(state: GameState, step: NightStep, options: BmrIn
     }
     return {
       kind: "note",
+      textKey: "note.bmr.lunatic",
       text: "Безумец выбирает как Демон. Смертей нет; покажите выбор настоящему Демону.",
     };
   }
@@ -1233,6 +1241,8 @@ export function bmrInfoForStep(state: GameState, step: NightStep, options: BmrIn
           : null;
       return {
         kind: "note",
+        textKey: target ? "note.bmr.lunaticReport" : "note.bmr.lunaticReportNoTarget",
+        textVars: target ? { name: lunatic.name, target: target.name } : { name: lunatic.name },
         text:
           "Безумец: " +
           lunatic.name +
@@ -1243,13 +1253,25 @@ export function bmrInfoForStep(state: GameState, step: NightStep, options: BmrIn
   }
   if (role === "exorcist") {
     if (impaired) {
-      return { kind: "note", text: "Способность не сработала: игрок отравлен или пьян." };
+      return {
+        kind: "note",
+        textKey: "note.abilityFailed",
+        text: "Способность не сработала: игрок отравлен или пьян.",
+      };
     }
     const target = targetIds[0] ? playerById(state, targetIds[0]) : null;
     if (target && roleTeam(target.roleId || "") === "demon") {
-      return { kind: "note", text: "Демон узнаёт Экзорциста и не просыпается этой ночью." };
+      return {
+        kind: "note",
+        textKey: "note.exorcistBlocked",
+        text: "Демон узнаёт Экзорциста и не просыпается этой ночью.",
+      };
     }
-    return { kind: "note", text: "Цель не Демон: способность не сработала." };
+    return {
+      kind: "note",
+      textKey: "note.bmr.exorcistMiss",
+      text: "Цель не Демон: способность не сработала.",
+    };
   }
   return { kind: "none" };
 }

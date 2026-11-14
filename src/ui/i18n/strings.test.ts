@@ -83,6 +83,29 @@ test("every core import and replay refusal code resolves in all three catalogs",
   assert.deepEqual(missing, []);
 });
 
+// A computed hint carries its catalog key as a `textKey` literal; the engine's
+// stored Russian sentence is only the fallback, so a missing entry would leave
+// the English and Azerbaijani console untranslated.
+test("every engine hint key resolves in all three catalogs", () => {
+  const referenced = new Set<string>();
+  for (const file of coreSourceFiles(CORE_DIR)) {
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(/"(note\.(?:sv|bmr)\.[\w.]+)"/g)) {
+      referenced.add(match[1]);
+    }
+  }
+  assert.ok(referenced.size > 20, "the engine hints reference catalogued keys");
+  const missing = [...referenced].sort().flatMap((key) =>
+    Object.entries(CATALOGS)
+      .filter(([, dict]) => !dict[key])
+      .map(([code]) => code + ":" + key),
+  );
+  assert.deepEqual(missing, []);
+  for (const [, dict] of Object.entries(CATALOGS)) {
+    assert.ok(dict["note.sv.falseSuffix"], "the shared false-information suffix is translated");
+  }
+});
+
 // The storyteller step contract (issue #45) adds screens and consequences, so
 // every one of its keys must reach all three catalogs with the same placeholders.
 const STEP_KEYS = [

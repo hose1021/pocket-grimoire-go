@@ -1047,7 +1047,8 @@ export function DayActionsPanel({ view }: { view: TableView }) {
                       {t("ui.madnessExecute")}
                     </button>
                   ) : null}
-                  {!executed && effect.decidedPenalty !== "none" ? (
+                  {!executed &&
+                  (effect.decidedPenalty !== "none" || effect.decidedDay !== day.number) ? (
                     <button
                       className="btn"
                       type="button"
