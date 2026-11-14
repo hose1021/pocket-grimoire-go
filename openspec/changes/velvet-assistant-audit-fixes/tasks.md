@@ -93,4 +93,3 @@
 
 - RED: `node --test src/ui/screens/table/helpers.test.ts` failed with `SyntaxError: ... does not provide an export named 'blockerText'`; `node --test src/application/read-models/table.test.ts` failed because the module had no export `resurrectChoices`; `node --test src/ui/i18n/strings.test.ts` failed `error.15 is Russian` with `actual: 'Virgin ability is unavailable.'`.
 - GREEN: `node --test "src/ui/screens/table/*.test.ts" "src/application/read-models/*.test.ts" "src/ui/i18n/*.test.ts"` → 53 pass, 0 fail; `npx oxlint` and `npx oxfmt --check` clean on the changed files; `npx openspec validate velvet-assistant-audit-fixes --type change --strict` → valid.
-
