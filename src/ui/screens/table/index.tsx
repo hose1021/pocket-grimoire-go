@@ -19,7 +19,7 @@ import { useTableDrafts } from "./drafts.ts";
 import { TableDock } from "./dock.tsx";
 import { ArcaneAppBar } from "../../components/arcane/index.ts";
 import { TableRing } from "./ring.tsx";
-import { nextSelection, rejectionOf, rejectionText } from "./helpers.ts";
+import { nextSelection, overlayOutlivesWin, rejectionOf, rejectionText } from "./helpers.ts";
 import type { Rejection } from "./helpers.ts";
 import { readStepDraft } from "./step-draft.ts";
 import type { TableActions, TableView } from "./view.ts";
@@ -59,6 +59,21 @@ export function TableScreen() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [drafts.overlay, closeOverlay]);
+
+  // A win ends the game behind the console; the dialog open at that moment
+  // would cover the over panel. Close it once, on the transition, so the host
+  // can still open the roster and the menu afterwards. Export and import keep
+  // their content.
+  const closedOnWin = useRef(false);
+  useEffect(() => {
+    if (!state.winner) {
+      closedOnWin.current = false;
+      return;
+    }
+    if (closedOnWin.current) return;
+    closedOnWin.current = true;
+    if (drafts.overlay && !overlayOutlivesWin(drafts.overlay)) closeOverlay();
+  }, [state.winner, drafts.overlay, closeOverlay]);
 
   // A privacy surface hides the console but keeps it mounted, so the trigger
   // stays reachable; a trigger inside a closed dialog is replaced by the dock.

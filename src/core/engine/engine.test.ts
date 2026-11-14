@@ -2574,3 +2574,28 @@ test("a Juggler with zero guesses still answers on the night after their first d
   const zeroStep = noGuesses.night.queue.find((candidate) => candidate.roleId === "juggler");
   assert.ok(zeroStep, "a Juggler who never guessed still wakes");
 });
+
+test("a nomination execution of the Demon arms the Mastermind", () => {
+  const state = makeBmr(
+    {
+      1: "mastermind",
+      2: "sailor",
+      3: "chambermaid",
+      4: "exorcist",
+      5: "pacifist",
+      6: "innkeeper",
+      7: "tinker",
+      8: "po",
+    },
+    { count: 8 },
+  );
+  startNight(state);
+  skipNight(state);
+  openNominations(state);
+  const nomination = nominate(state, "2", "8").nomination!;
+  assert.equal(recordVotes(state, nomination.id, ["2", "3", "4", "5"]).ok, true);
+  const result = execute(state, nomination.id);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(state.winner, null, "the Mastermind suppresses the Demon-dead win");
+  assert.equal(state.mastermind?.active, true, "the Mastermind arms the extra day");
+});

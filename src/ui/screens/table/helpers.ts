@@ -221,6 +221,14 @@ export function redirectChoiceValue(redirect: string | null | undefined): string
   return redirect ?? "";
 }
 
+/**
+ * An overlay that may stay open after the game ends. The export and import
+ * dialogs keep their content; every other overlay would cover the over panel.
+ */
+export function overlayOutlivesWin(overlay: string | null | undefined): boolean {
+  return overlay === "export" || overlay === "import";
+}
+
 export interface JugglerGuessPair {
   playerId: string;
   roleId: string;

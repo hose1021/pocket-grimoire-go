@@ -56,9 +56,12 @@ export async function bootScenario({ viewport = { width: 1280, height: 900 } } =
  * Seeds a dealt game and lands on the table.
  * edition: "tb" | "bmr" | "snv" | "manual"; assignment: { seatId: roleId }.
  */
-export async function seedGame(page, { edition = "tb", assignment, bluffs = [], start = "night" }) {
+export async function seedGame(
+  page,
+  { edition = "tb", assignment, bluffs = [], start = "night", twin, drunkShown, lunaticShown },
+) {
   const result = await page.evaluate(
-    async ({ edition, assignment, bluffs, start }) => {
+    async ({ edition, assignment, bluffs, start, twin, drunkShown, lunaticShown }) => {
       const { model, engine, store, rules } = await window.PG_MODULES();
       const seats = Object.keys(assignment);
       const game = model.createGame(seats.length);
@@ -81,6 +84,9 @@ export async function seedGame(page, { edition = "tb", assignment, bluffs = [], 
       game.setup.count = seats.length;
       game.setup.roles = [...new Set(Object.values(assignment))];
       game.setup.bluffs = bluffs;
+      if (twin) game.setup.evilTwinGoodId = twin;
+      if (drunkShown) game.setup.drunkShownId = drunkShown;
+      if (lunaticShown) game.setup.lunaticShownId = lunaticShown;
       const dealt = engine.dealGame(game, { assignment });
       if (!dealt.ok) return { ok: false, step: "deal", detail: dealt };
       engine.autoSecrets(game);
@@ -97,7 +103,7 @@ export async function seedGame(page, { edition = "tb", assignment, bluffs = [], 
       dispatchEvent(new PopStateEvent("popstate"));
       return { ok: true };
     },
-    { edition, assignment, bluffs, start },
+    { edition, assignment, bluffs, start, twin, drunkShown, lunaticShown },
   );
   assert.equal(result.ok, true, `seed failed: ${JSON.stringify(result)}`);
   await settle(page);
@@ -173,18 +179,18 @@ export async function currentStep(page) {
 async function pickTargets(page, wanted) {
   const seats = page.locator("[data-target]:not(:disabled)");
   const available = await seats.count();
-  const ids = Array.isArray(wanted) ? wanted.map(String) : [];
-  if (!ids.length) {
-    const count = Number(wanted) || 1;
-    assert.ok(available >= count, `step needs ${count} target(s), ${available} selectable`);
-    for (let index = 0; index < count; index += 1) await seats.nth(index).click();
+  if (Array.isArray(wanted)) {
+    // An explicit empty list means "choose no one" (the Po may decline).
+    for (const id of wanted.map(String)) {
+      const seat = page.locator(`[data-target][data-id="${id}"]:not(:disabled)`);
+      assert.equal(await seat.count(), 1, `target ${id} must be selectable`);
+      await seat.click();
+    }
     return;
   }
-  for (const id of ids) {
-    const seat = page.locator(`[data-target][data-id="${id}"]:not(:disabled)`);
-    assert.equal(await seat.count(), 1, `target ${id} must be selectable`);
-    await seat.click();
-  }
+  const count = Number(wanted) || 1;
+  assert.ok(available >= count, `step needs ${count} target(s), ${available} selectable`);
+  for (let index = 0; index < count; index += 1) await seats.nth(index).click();
 }
 
 async function pickGiven(page, wanted) {

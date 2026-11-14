@@ -662,9 +662,9 @@ export function execute(state: GameState, nominationId: string, options: DayOpti
 
   const livingBefore = livingPlayers(state).length;
   const death = executePlayer(state, nomination.nomineeId, "vote", at, options);
-  if (death && nominee && roleTeam(nominee.roleId || "") === "demon") {
-    // executePlayer already resolved inheritance.
-  }
+  // Link the death before the win check: the Mastermind and the Demon-dead
+  // result both read the recorded execution death.
+  state.day.execution.deathId = death ? death.id : null;
   checkWin(state);
   addLog(state, {
     kind: "execution",

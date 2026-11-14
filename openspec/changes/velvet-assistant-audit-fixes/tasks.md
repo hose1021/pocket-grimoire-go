@@ -43,6 +43,12 @@
   (AS13, BMR22).
 - [x] 4.4 Name the Pacifist rule on the survival control (BMR21).
 - [x] 4.5 Generalise the seat picker to the step's maximum target count (BMR2).
+- [x] 4.6 Close the dialog that is open at the moment the game ends, once, so the
+  over panel is not covered; keep export/import open and leave the roster and
+  menu usable afterwards.
+  - GREEN: `overlayOutlivesWin` test in `helpers.test.ts` plus the manual repro
+    (8-player TB, Slayer shot from day help, over panel visible without a
+    dismissal).
 
 ## 5. Localized copy
 

@@ -24,6 +24,7 @@ import {
   logConsequence,
   nextSelection,
   normalizeJugglerGuesses,
+  overlayOutlivesWin,
   redirectChoiceValue,
   rejectionOf,
   rejectionText,
@@ -277,6 +278,16 @@ test("the Mayor select has no value for an unanswered redirect", () => {
   assert.equal(redirectChoiceValue(null), "");
   assert.equal(redirectChoiceValue("none"), "none");
   assert.equal(redirectChoiceValue("2"), "2");
+});
+
+test("only the export and import dialogs outlive a win", () => {
+  assert.equal(overlayOutlivesWin("export"), true);
+  assert.equal(overlayOutlivesWin("import"), true);
+  assert.equal(overlayOutlivesWin("day"), false);
+  assert.equal(overlayOutlivesWin("step"), false);
+  assert.equal(overlayOutlivesWin("info"), false);
+  assert.equal(overlayOutlivesWin("menu"), false);
+  assert.equal(overlayOutlivesWin(null), false);
 });
 
 test("the Juggler guesses read from both the pair list and the legacy map", () => {

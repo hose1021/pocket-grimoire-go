@@ -154,6 +154,33 @@ the table menu.
 - **WHEN** a living Tinker exists and the day has no execution
 - **THEN** the table menu offers a control that announces the Tinker's day death
 
+### Requirement: A dialog never covers the over panel
+
+When the game ends while a console dialog is open, the console SHALL close that
+dialog once, and SHALL keep the export and import dialogs open. After the
+transition the host SHALL still be able to open the roster and the menu over the
+over panel.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) host-assistant follow-up
+**Tests**: `src/ui/screens/table/helpers.test.ts`
+
+#### Scenario: Slayer shot from day help
+
+- **WHEN** the host records a Slayer shot from the day-help sheet and the shot
+  ends the game
+- **THEN** the day-help dialog closes and the over panel is visible without a
+  manual dismissal
+
+#### Scenario: Export dialog
+
+- **WHEN** the game ends while the export dialog is open
+- **THEN** the dialog keeps its export text and stays open
+
+#### Scenario: Roster after the win
+
+- **WHEN** the host opens the roster after the game has ended
+- **THEN** the roster stays open and the over panel is not covered on load
+
 ### Requirement: Demo never touches the saved game
 
 The console's demo control SHALL open the `/demo` route and SHALL NOT dispatch a
