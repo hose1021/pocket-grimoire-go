@@ -51,10 +51,11 @@ SHALL resolve a redirect to a dead, Soldier or Monk-protected player as no death
 The engine SHALL pass the Demon role to a sober Scarlet Woman only when at least
 five players were alive immediately before the Demon died, SHALL pass the Imp's
 self-kill to a living Minion below that threshold, and SHALL not let the new
-Demon act again in the same night.
+Demon act again in the same night. When a player becomes the Demon, the engine
+SHALL end every effect that player sourced.
 
-**Source**: [Scarlet Woman r3117](https://wiki.bloodontheclocktower.com/index.php?title=Scarlet_Woman&oldid=3117), [Imp r3116](https://wiki.bloodontheclocktower.com/index.php?title=Imp&oldid=3116)
-**Tests**: `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`
+**Source**: [Scarlet Woman r3117](https://wiki.bloodontheclocktower.com/index.php?title=Scarlet_Woman&oldid=3117), [Imp r3116](https://wiki.bloodontheclocktower.com/index.php?title=Imp&oldid=3116), [Poisoner r1737](https://wiki.bloodontheclocktower.com/index.php?title=Poisoner&oldid=1737)
+**Tests**: `src/core/engine/engine.test.ts`
 
 #### Scenario: Five living before the death
 
@@ -66,15 +67,29 @@ Demon act again in the same night.
 - **WHEN** the Demon dies with fewer than five players alive
 - **THEN** the Scarlet Woman does not inherit
 
+#### Scenario: Poisoner becomes the Imp
+
+- **WHEN** the Poisoner is the only living Minion and the Imp kills itself
+- **THEN** the Poisoner becomes the Imp and the poison it sourced stops
+
+#### Scenario: Redirected Imp death
+
+- **WHEN** the Imp attacks the Mayor and the Storyteller redirects the attack
+  onto the Imp
+- **THEN** the Imp dies by a normal Demon death and no Minion inherits below
+  five living players
+
 ### Requirement: Day abilities
 
 The engine SHALL spend the Virgin's first nomination even when it does not
 trigger, SHALL execute only an eligible Townsfolk nominator, SHALL spend the
 Slayer ability when used while impaired without a kill, and SHALL count an
-illegal Butler vote with a private warning.
+illegal Butler vote with a private warning. The engine SHALL also record the
+Virgin's first nomination from the table control even when the day already
+recorded an execution, and that record SHALL spend the ability.
 
 **Source**: [Virgin r1729](https://wiki.bloodontheclocktower.com/index.php?title=Virgin&oldid=1729), [Slayer r3122](https://wiki.bloodontheclocktower.com/index.php?title=Slayer&oldid=3122), [Butler r3120](https://wiki.bloodontheclocktower.com/index.php?title=Butler&oldid=3120)
-**Tests**: `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`, `src/core/engine/engine.test.ts`
+**Tests**: `src/core/engine/engine.test.ts`
 
 #### Scenario: Drunk nominator
 
@@ -85,6 +100,13 @@ illegal Butler vote with a private warning.
 
 - **WHEN** a poisoned Slayer chooses the Demon
 - **THEN** the ability is spent and the Demon survives
+
+#### Scenario: First nomination after an execution
+
+- **WHEN** the day already recorded an execution and the host records the
+  Virgin's first nomination with the table control
+- **THEN** the nomination is recorded, `used.virgin` is true, and no second
+  execution is attempted
 
 ### Requirement: Registration and the Drunk mask
 
@@ -129,10 +151,12 @@ Minion promoted to Demon during the night.
 The engine SHALL compute the Librarian and Investigator first-night
 information from the real setup: a Librarian learns that one of two players is
 a particular Outsider or that zero are in play, and an Investigator learns that
-one of two players is a particular Minion.
+one of two players is a particular Minion. The zero SHALL stay legal while every
+Outsider in play can register as something else, and a shown character SHALL NOT
+have to be in the bag when one of the two players can register as it.
 
-**Source**: [Librarian r1721](https://wiki.bloodontheclocktower.com/index.php?title=Librarian&oldid=1721), [Investigator r2983](https://wiki.bloodontheclocktower.com/index.php?title=Investigator&oldid=2983)
-**Tests**: `src/core/engine/engine.test.ts`
+**Source**: [Librarian r1721](https://wiki.bloodontheclocktower.com/index.php?title=Librarian&oldid=1721), [Investigator r2983](https://wiki.bloodontheclocktower.com/index.php?title=Investigator&oldid=2983), [Washerwoman r2630](https://wiki.bloodontheclocktower.com/index.php?title=Washerwoman&oldid=2630), [Spy r3118](https://wiki.bloodontheclocktower.com/index.php?title=Spy&oldid=3118), [Recluse r3007](https://wiki.bloodontheclocktower.com/index.php?title=Recluse&oldid=3007)
+**Tests**: `src/core/engine/setup.test.ts`, `src/core/engine/engine.test.ts`
 
 #### Scenario: Librarian pair
 
@@ -144,10 +168,30 @@ one of two players is a particular Minion.
 - **WHEN** no Outsider is in play on the first night
 - **THEN** the Librarian learns that zero are in play and no pair is required
 
+#### Scenario: Librarian zero with a registering Recluse
+
+- **WHEN** the only Outsider in play is the Recluse and the Storyteller makes the Recluse register as a Minion
+- **THEN** the Librarian's zero is accepted and the night is not blocked
+
+#### Scenario: Outsider that cannot register away
+
+- **WHEN** a non-Recluse Outsider is in play and the host records the Librarian's zero
+- **THEN** setup secrets report `librarian-zero`
+
 #### Scenario: Investigator pair
 
 - **WHEN** the first night resolves the Investigator step
 - **THEN** the shown role is a Minion in play and the pair contains that player
+
+#### Scenario: A shown character held by a registering Spy or Recluse
+
+- **WHEN** the Washerwoman or Librarian names a not-in-play character and one of the pair is the Spy, or the Investigator names a not-in-play Minion and one of the pair is the Recluse
+- **THEN** the pair is accepted and no `info-inplay-*` reason is reported
+
+#### Scenario: A shown character nobody can register as
+
+- **WHEN** the pair names a character that is neither in the bag nor registrable through a pair member
+- **THEN** setup secrets report `info-inplay-*` for that role
 
 ### Requirement: False information for every impaired Trouble Brewing role
 
@@ -178,9 +222,12 @@ including a Librarian whose setup result is zero.
 The engine SHALL apply Spy and Recluse registration overrides for alignment,
 Demon, Minion, Townsfolk and Outsider queries, including for a dead Spy or
 Recluse, and SHALL NOT treat a Recluse registered merely as evil as a Demon.
+The engine SHALL apply an override only while the registrant is sober and
+healthy: a drunk or poisoned Spy or Recluse registers normally, and a
+registration recorded for that player SHALL be rejected before the step mutates.
 
-**Source**: [Spy r3118](https://wiki.bloodontheclocktower.com/index.php?title=Spy&oldid=3118), [Recluse r3007](https://wiki.bloodontheclocktower.com/index.php?title=Recluse&oldid=3007)
-**Tests**: `src/core/engine/engine.test.ts`
+**Source**: [Spy r3118](https://wiki.bloodontheclocktower.com/index.php?title=Spy&oldid=3118), [Recluse r3007](https://wiki.bloodontheclocktower.com/index.php?title=Recluse&oldid=3007), [States r1039](https://wiki.bloodontheclocktower.com/index.php?title=States&oldid=1039)
+**Tests**: `src/core/engine/engine.test.ts`, `src/core/engine/host-choice.test.ts`
 
 #### Scenario: Dead Recluse registration
 
@@ -196,6 +243,17 @@ Recluse, and SHALL NOT treat a Recluse registered merely as evil as a Demon.
 
 - **WHEN** a dead Spy is registered as good, a Townsfolk or an Outsider
 - **THEN** the matching alignment and role queries return that registration
+
+#### Scenario: Impaired registrant
+
+- **WHEN** a poisoned Spy is registered as good or as a Townsfolk
+- **THEN** the Chef and alignment queries keep the real evil alignment, the
+  Virgin does not trigger, and a registration recorded for that Spy is rejected
+
+#### Scenario: Impaired Recluse
+
+- **WHEN** a drunk Recluse is registered as a Demon
+- **THEN** the Fortune Teller and the Slayer see the Recluse's real character
 
 ### Requirement: Spy grimoire step
 
@@ -277,3 +335,42 @@ fifteen.
 
 - **WHEN** a printed Trouble Brewing preset bag is dealt at a count from five to fifteen
 - **THEN** the secrets validate, the first night resolves, an execution is recorded, and the next night starts
+
+### Requirement: Saint loss scope
+
+The engine SHALL declare the Saint's evil win only for an unimpaired Saint death
+by execution on the current day, and a later check SHALL NOT re-fire from an
+earlier day's death log.
+
+**Source**: [Saint r3119](https://wiki.bloodontheclocktower.com/index.php?title=Saint&oldid=3119)
+**Tests**: `src/core/engine/engine.test.ts`
+
+#### Scenario: Same-day loss
+
+- **WHEN** an unimpaired Saint dies by execution during the current day
+- **THEN** evil wins with the `saint` reason
+
+#### Scenario: Cleared winner on a later day
+
+- **WHEN** the recorded winner is cleared and the next day's check runs
+- **THEN** the earlier Saint execution does not declare evil again
+
+### Requirement: False information for the Drunk's setup information
+
+The engine SHALL accept the false setup information the Storyteller gives a
+Drunk under the shown information role. A Drunk shown the Librarian SHALL be
+able to record the "zero Outsiders" answer without a role and a two-player
+pair.
+
+**Source**: [Drunk r3165](https://wiki.bloodontheclocktower.com/index.php?title=Drunk&oldid=3165), [Librarian r1721](https://wiki.bloodontheclocktower.com/index.php?title=Librarian&oldid=1721), `docs/rules-sources.md` "Interpretations that matter in code" item 3
+**Tests**: `src/core/engine/setup.test.ts`, `src/core/engine/engine.test.ts`
+
+#### Scenario: Drunk shown the Librarian
+
+- **WHEN** the bag contains the Drunk shown the Librarian and the host records the zero answer
+- **THEN** setup secrets accept it and report no `drunk-info`
+
+#### Scenario: Drunk shown the Washerwoman
+
+- **WHEN** the Drunk's false pair is missing or names the wrong team
+- **THEN** setup secrets still report `drunk-info` or `drunk-info-team`

@@ -30,10 +30,11 @@ before mounting the next.
 ### Requirement: Public and player privacy
 
 Public and player views SHALL render a projection that contains no real role,
-bluff, note or effect, and the player handoff SHALL expose only the shown role.
+bluff, note or effect, the player handoff SHALL expose only the shown role, and
+the seat route SHALL render names and seat numbers only.
 
-**Source**: `SPEC.md` "Runtime" and "CSS and accessibility"; `AGENTS.md` "Architecture & Data Flow"
-**Tests**: `src/core/engine/engine.test.ts`, `scripts/browser-check.mjs:758`
+**Source**: `SPEC.md` "Runtime", "CSS and accessibility" and `/seat` "names only"; `AGENTS.md` "Architecture & Data Flow"; issue #171 SET8
+**Tests**: `src/core/engine/engine.test.ts`, `src/ui/screens/seat-projection.test.ts`, `scripts/browser-check.mjs:758`
 
 #### Scenario: Public screen during a night
 
@@ -44,6 +45,12 @@ bluff, note or effect, and the player handoff SHALL expose only the shown role.
 
 - **WHEN** the public projection is built from a saved game
 - **THEN** it contains no role, bluff, note or effect field
+
+#### Scenario: Seat route
+
+- **WHEN** the seat route renders a dealt game
+- **THEN** the projection contains a player id, a seat number and a name and no
+  role, shown role, team or alive field
 
 ### Requirement: Interface string parity
 
@@ -62,12 +69,14 @@ hardcoded translations.
 ### Requirement: Role sheet scenario filter
 
 The role sheet SHALL filter by Trouble Brewing, Bad Moon Rising, Sects and
-Violets or all standard roles, SHALL show the 5 Travellers in a separate
-section, SHALL persist the filter across language change and reload, and SHALL
-never mutate the saved game.
+Violets or all standard roles, SHALL show the selected scenario's five
+Travellers in a separate section, SHALL show all fifteen Travellers in the
+all-roles scenario, SHALL persist the filter across language change and reload,
+and SHALL never mutate the saved game.
 
-**Source**: `SPEC.md` `/sheet/{ru,en,az}`
-**Tests**: `scripts/browser-check.mjs:821`, `scripts/browser-check.mjs:1226`
+**Source**: `SPEC.md` `/sheet/{ru,en,az}`; issue #171 SET11
+**Tests**: `scripts/browser-check.mjs:821`, `scripts/browser-check.mjs:1226`,
+`src/ui/screens/sheet-scenarios.test.ts`
 
 #### Scenario: Scenario selection
 
@@ -77,7 +86,20 @@ never mutate the saved game.
 #### Scenario: Travellers section
 
 - **WHEN** the host opens the Travellers toggle
-- **THEN** the 5 Travellers appear outside the scenario count
+- **THEN** the 5 Travellers of the selected scenario appear outside the
+  scenario count in their own section
+
+#### Scenario: All roles
+
+- **WHEN** the host selects the all-roles scenario and opens the Travellers
+  toggle
+- **THEN** the 15 standard Travellers appear in their own section
+
+#### Scenario: Scenario switch
+
+- **WHEN** the host switches from Trouble Brewing to Sects and Violets
+- **THEN** the Travellers section shows the Sects and Violets Travellers and
+  never the Trouble Brewing five
 
 ### Requirement: Minimum viewport and accessibility
 
@@ -334,3 +356,142 @@ continue to reject a dead target with `error.55`.
 
 - **WHEN** a dead target reaches the engine for the Snake Charmer step
 - **THEN** the command is rejected with `error.55` and no swap happens
+
+### Requirement: Localized engine-originated console text
+
+The console SHALL render every engine-originated note, cause and warning in the
+active UI language. A raw English sentence SHALL NOT appear in the Russian UI,
+and stored text without a localized form SHALL remain readable.
+
+**Source**: [Issue #170](https://github.com/hose1021/grimoria/issues/170); `AGENTS.md` "Code Conventions"; `SPEC.md` "Screens"
+**Tests**: `src/ui/i18n/strings.test.ts`, `src/core/engine/bmr.test.ts`, `scripts/browser-check.mjs`
+
+#### Scenario: Bad Moon Rising step note
+
+- **WHEN** a Bad Moon Rising step carries an engine note in the Russian UI
+- **THEN** the note appears in Russian and not as a raw English sentence
+
+#### Scenario: Language switch
+
+- **WHEN** the host switches the UI language
+- **THEN** the engine notes on the current step render in the new language
+
+#### Scenario: Stored legacy note
+
+- **WHEN** an imported save carries note text with no localized form
+- **THEN** the console shows the stored text instead of a missing-key placeholder
+
+### Requirement: One tracking disclaimer per screen
+
+A screen SHALL show the tracking disclaimer once and SHALL NOT repeat it on the
+deal screen, `/secrets` and every step sheet.
+
+**Source**: [Issue #170](https://github.com/hose1021/grimoria/issues/170); `SPEC.md` "Screens"
+**Tests**: `scripts/browser-check.mjs`
+
+#### Scenario: Deal screen
+
+- **WHEN** the deal screen renders
+- **THEN** the tracking disclaimer appears once
+
+#### Scenario: Step sheet
+
+- **WHEN** a step sheet opens after the screen already showed the disclaimer
+- **THEN** the sheet does not repeat it
+
+#### Scenario: Secrets screen
+
+- **WHEN** `/secrets` renders
+- **THEN** the disclaimer appears once on the screen
+
+### Requirement: Host guidance follows the UI language and the actor
+
+The step guidance SHALL give a specific instruction for the Bad Moon Rising and
+Sects & Violets introduction steps, SHALL keep a Lunatic-specific instruction,
+and SHALL use the Drunk guidance for a Drunk actor's step, stating that the
+ability does not work and the information is false.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS3, AS4); [Drunk](https://wiki.bloodontheclocktower.com/index.php?title=Drunk)
+**Tests**: `src/ui/i18n/strings.test.ts`
+
+#### Scenario: Minion introduction
+
+- **WHEN** a Bad Moon Rising first night reaches the minion introduction
+- **THEN** the host action tells the Storyteller to wake the Minions and show
+  them the Demon and each other, not the generic ability line
+
+#### Scenario: Drunk actor
+
+- **WHEN** the actor of a night step is the Drunk
+- **THEN** the guidance says the ability does not work and the information is
+  false
+
+### Requirement: Host-facing reasons and win causes are localized
+
+A rejected command and a setup error SHALL render in the active UI language
+through their `error.N` key when the catalogs translate it, and SHALL fall back
+to the engine message otherwise. An illegal step answer and a madness review
+SHALL have distinct `error.66` copy. The Vortox, Evil Twin and Klutz win causes
+SHALL have a sentence in every catalog.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS15, AS16, AS17)
+**Tests**: `src/ui/screens/table/helpers.test.ts`, `src/ui/i18n/strings.test.ts`
+
+#### Scenario: English console rejects a command
+
+- **WHEN** the engine rejects a step with a translated error code
+- **THEN** the banner shows the English sentence, not the Russian engine message
+
+#### Scenario: Vortox win
+
+- **WHEN** the Vortox win cause is recorded
+- **THEN** the over panel shows a full sentence for it in every catalog
+
+### Requirement: The shown card records the chosen answer
+
+For an impaired actor the private player card SHALL show the selected `given`
+answer when the host recorded one, then the typed template, and only then an
+explicit "information is not set up" state.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS14)
+**Tests**: `src/ui/screens/table/helpers.test.ts`
+
+#### Scenario: Poisoned Chef with a chosen number
+
+- **WHEN** the host selects "2" for a poisoned Chef and shows the card
+- **THEN** the card shows the computed form of that answer, not only the empty
+  template
+
+### Requirement: Registration is labelled as registration
+
+The character answer for a healthy Undertaker or Ravenkeeper whose target
+registers as another character SHALL be labelled as a registration choice, not
+as false information.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS11)
+**Tests**: `src/ui/screens/table/helpers.test.ts`
+
+#### Scenario: Undertaker after a Spy execution
+
+- **WHEN** a healthy Undertaker's executed target is the Spy and the host
+  chooses the shown character
+- **THEN** the control is labelled as a registration choice
+
+### Requirement: Russian host copy matches the pinned rules
+
+The Russian catalog SHALL state that the Saint's execution wins for evil, SHALL
+keep the Spy's real-grimoire instruction separate from the impaired false-picture
+instruction, and SHALL translate `error.15` and `error.16`.
+
+**Source**: [Issue #171](https://github.com/hose1021/grimoria/issues/171) (AS19); [Saint](https://wiki.bloodontheclocktower.com/index.php?title=Saint)
+**Tests**: `src/ui/i18n/strings.test.ts`
+
+#### Scenario: Russian Saint guide
+
+- **WHEN** the Russian console shows the Saint's guide
+- **THEN** the host line says the healthy Saint's execution gives evil the win
+
+#### Scenario: Russian error copy
+
+- **WHEN** the Russian console shows `error.15` or `error.16`
+- **THEN** the sentence is Russian, not the English placeholder
