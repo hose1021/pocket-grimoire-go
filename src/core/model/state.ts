@@ -306,7 +306,12 @@ export function publicGameView(state: GameState) {
   const registered = orderedPlayers(state)
     .filter((player) => player.registeredDead)
     .map((player) => player.id);
-  const deathNames = [...new Set([...announced, ...registered])]
+  // An execution is public: the town saw it, so the public page names the
+  // player once the death is real (a prevented execution kills nobody).
+  const execution = state.day && state.day.execution && state.day.execution.deathId
+    ? [state.day.execution.playerId]
+    : [];
+  const deathNames = [...new Set([...announced, ...execution, ...registered])]
     .map((id) => seatName(state, id))
     .filter(Boolean);
   return {

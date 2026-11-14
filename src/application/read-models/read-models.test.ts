@@ -34,3 +34,21 @@ test("the player snapshot exposes only the shown role of one seat", () => {
   assert.equal(JSON.stringify(player).includes("imp"), false);
   assert.equal(playerSnapshot(state, 99), null);
 });
+
+test("the public projection names an executed player once the death is real", () => {
+  const state = createGame(7);
+  state.players["1"].name = "Anna";
+  state.players["1"].alive = false;
+  state.day.execution = {
+    playerId: "1",
+    cause: "vote",
+    at: "2026-11-14T00:00:00.000Z",
+    nominationId: null,
+    deathId: "death-1",
+  };
+  assert.deepEqual(publicSnapshot(state), publicGameView(state));
+  assert.deepEqual(publicGameView(state).deaths, ["Anna"]);
+
+  state.day.execution.deathId = null;
+  assert.deepEqual(publicGameView(state).deaths, [], "a prevented execution kills nobody");
+});
