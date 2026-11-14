@@ -50,7 +50,7 @@ contradicts the printed rules and `SPEC.md`:
 
 Out of scope: the model-side fixes of the setup-owner change
 (`openspec/changes/velvet-setup-audit-fixes`), the table console, and the locale
-catalog entries still needed for setup problem codes (reported in `tasks.md`).
+catalog entries for the setup problem codes, listed in `tasks.md` (landed in all three locales).
 
 ## Capabilities
 

@@ -81,7 +81,7 @@
 - **TB8 UI**: Drunk shown the Librarian; `/secrets` shows the "No Outsiders in
   play" checkbox and ticking it clears the error.
 
-## 4. Locale keys still needed (not edited: another owner)
+## 4. Locale keys (added by the locales owner)
 
 Setup problem codes are looked up as `error.<code>`. Exact text to add to
 `src/ui/i18n/locales/{ru,en,az}.ts`:
@@ -141,7 +141,7 @@ parameterised keys (`error.unknown`, `error.outside-script`,
 `error.bluffs-drunk`, `error.bluffs-lunatic`) need the model to carry the role
 id, because the Russian message embeds the label without a structured field.
 
-## 5. Model changes still needed (outside this change)
+## 5. Model changes (landed by the setup owner)
 
 - `src/core/model/rules.ts` and `src/core/engine/setup.ts` errors should carry
   the interpolation values, e.g.

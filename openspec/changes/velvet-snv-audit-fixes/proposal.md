@@ -79,10 +79,7 @@ official pages. Eleven findings in section 3 are wrong in `sv.ts` and
 - Code: `src/core/engine/sv.ts`, `src/core/engine/retention.ts`,
   `src/core/model/rules.ts` (`compositionFor`, `bagErrors`, `randomBag`).
 - Tests: `src/core/engine/snv.test.ts`.
-- Neighbouring owner files still needed for SV1, SV6 and the Juggler command:
-  `src/core/engine/day.ts`, `src/core/engine/effects.ts`,
-  `src/core/model/types.ts`, `src/core/model/state.ts`; and
-  `src/core/engine/index.ts` must re-export `recordKlutzChoice`.
+- Landed in the neighbouring owner files: `src/core/engine/day.ts`, `src/core/engine/effects.ts`, `src/core/model/types.ts`, `src/core/model/state.ts`, and `src/core/engine/index.ts`, which re-exports `recordKlutzChoice`.
 - UI follow-up: the day card needs the Klutz public-choice control and the
   Juggler guess entry needs to record zero to five pairs.
 - Locale keys: `note.pithagInPlay` and the `winReason.*` keys listed in

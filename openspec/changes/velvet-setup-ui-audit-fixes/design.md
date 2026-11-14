@@ -66,8 +66,7 @@ computes (`size`, `bluffs-count`, `team-<team>`, the modifier counts) and the
 catalog role label; the dynamic per-role information codes map to the generic
 `error.info*` key plus `{role}`. A translated key with an unsupplied
 placeholder falls back to the engine message, so a literal brace never renders.
-The keys still needed are listed in `tasks.md`; the model must keep the codes
-stable and carry `vars.role` for the role-naming codes.
+The keys listed in `tasks.md` now exist in ru/en/az, and the model carries `vars.role` for the role-naming codes; `strings.test.ts` asserts the parity.
 
 ### The stepper moves after the command (SPEC `/bag`)
 

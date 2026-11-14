@@ -19,7 +19,7 @@ printed "alive", "not yourself" and "good Townsfolk or Outsider" restrictions
 `completeStep` (`night.ts`), which must call it before any mutation. The engine
 keeps one rule source instead of duplicating the restrictions in the ring.
 
-Needed from `night.ts` (not edited this wave):
+Landed in `night.ts` (`completeStep`'s BMR branch):
 
 ```ts
 // after the count check in the `step.bmr` branch of completeStep
