@@ -62,20 +62,22 @@ sequence slot is still ahead of the resurrecting step. The `afterOrder` guard
 mirrors the Shabaloth example: an Exorcist who acts before the Shabaloth does
 not act tonight.
 
-## Needed from other owners
+## Landed by other owners
 
-- `effects.ts` BMR1: protect a sober Sailor from `cause === "execution"` as
-  well as `demon`/`ability` (Sailor r1768).
-- `effects.ts` BMR4: check the Tea Lady and Innkeeper protection before the
-  Fool's own prevention, so the Fool's ability is not spent when another
-  character saves it (Fool r2636).
-- `death.ts` BMR3: write a `fake: true` Death record for the Zombuul's first
-  "death" so `anyoneDiedToday` sees it (Zombuul r3022).
-- `state.ts`/`effects.ts`/`day.ts` BMR12: `livingPlayers` and the Tea Lady
-  neighbours must treat `registeredDead` as dead.
-- `day.ts` BMR21: only allow `executeByDecision(..., { survives: true })` for a
-  good player while a living, unimpaired Pacifist is in play.
-- `day.ts`/UI BMR22: a day-time Tinker death action.
+- `effects.ts` BMR1: a sober Sailor survives every cause, including an
+  execution; only `bypassProtection` kills (Sailor r1768). Landed in
+  `velvet-rules-audit-fixes`.
+- `effects.ts` BMR4: the Tea Lady and Innkeeper protections resolve before the
+  Fool's own prevention (Fool r2636). Landed in `velvet-rules-audit-fixes`.
+- `death.ts` BMR3: the Zombuul's first "death" writes a Death record, so
+  `anyoneDiedToday` sees it (Zombuul r3022). Landed in
+  `velvet-rules-audit-fixes`.
+- `state.ts`/`effects.ts`/`day.ts` BMR12: a registered-dead player counts as
+  dead for other abilities and stays alive for the game's own count.
+- `day.ts` BMR21: `survives` is legal only for a good target while a living,
+  unimpaired Pacifist is in play (`error.57`).
+- `day.ts`/UI BMR22: the `tinkerDeath` command records a real ability death and
+  the table dispatches it.
 - `helpers.ts` AS2: `infoText` must prefer the computed `info.text` when it is
   the Lunatic report, or the step's `noteKey` must be the report key (the engine
   now sets the key, so the existing priority already renders it).

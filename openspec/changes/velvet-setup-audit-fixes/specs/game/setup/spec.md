@@ -27,13 +27,13 @@ Outsider that this one removes.
 
 #### Scenario: Vigormortis shift
 
-- **WHEN** the Vigormortis is in play
-- **THEN** the bag removes one Outsider and rejects a negative Outsider count
+- **WHEN** the Vigormortis is in play and an Outsider token remains after the other modifiers
+- **THEN** the bag removes one Outsider and no team count goes negative
 
 #### Scenario: Impossible Vigormortis shift
 
 - **WHEN** the Vigormortis is in play at a count with no base Outsider
-- **THEN** bag validation reports `vigormortis-minus` and the bag removes no Outsider
+- **THEN** the shift is a no-op: the base composition stays, the bag is legal, and no `vigormortis-minus` reason is reported
 
 #### Scenario: Modifiers that cancel each other
 
