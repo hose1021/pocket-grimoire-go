@@ -448,6 +448,7 @@ export default {
     "Цель уже мертва. Чёрт может указать на неё, но убийства не будет: смерть не повторяется.",
   "ui.mayorDies": "Мэр умирает",
   "ui.showGrimoire": "Показать гримуар",
+  "ui.spyFalseGrimoire": "Способность Шпиона не работает: покажите ложный гримуар.",
   "ui.announceNames": "Объявляйте только имена. Не называйте причины и роли.",
   "ui.voting": "Голосование",
   "ui.executedWho": "Кого казнили?",
@@ -920,7 +921,8 @@ export default {
   "note.bmr.godfatherOutsiders": "Изгои в игре: {outsiders}.",
   "note.bmr.lunaticReportNoTarget": "Безумец: {name}. Сообщите это Демону.",
   "note.bmr.exorcistMiss": "Цель не Демон: способность не сработала.",
-  "note.sv.evilTwin": "Покажите Близнецам друг друга: {actor} и {twin}.",
+  "note.sv.evilTwin": "Покажите Близнецам друг друга: {actor} и {twin} ({twinRole}).",
+  "note.sv.evilTwinMissing": "Покажите Близнецам друг друга: {actor} и —.",
   "note.sv.clockmaker": "Расстояние от Демона до ближайшего Приспешника: {value}.",
   "note.sv.oracle": "Мёртвых злых игроков: {value}.",
   "note.sv.dreamer":

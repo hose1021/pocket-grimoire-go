@@ -11,7 +11,8 @@ import {
   startNight,
 } from "../../../core/engine/index.ts";
 import { createGame } from "../../../core/model/state.ts";
-import type { NightStep, Player } from "../../../core/model/types.ts";
+import type { NightStep, Player, Role } from "../../../core/model/types.ts";
+import { setUiLang, t as catalogT } from "../../i18n/strings.ts";
 import type { PreviewOutcome } from "../../ports.ts";
 import {
   applyGiven,
@@ -200,6 +201,42 @@ test("infoText prefers the computed note over the static note key", () => {
     "note.demonChanged",
     "a computed copy of the static note keeps the localized key",
   );
+});
+
+test("an English hint names roles from the catalog, never the engine label", () => {
+  setUiLang("en");
+  const names: Record<string, string> = { clockmaker: "Clockmaker", eviltwin: "Evil Twin" };
+  const roles = (id: string) => (names[id] ? ({ id, name: names[id] } as Role) : null);
+  const game = createGame(5);
+  // The engine keeps the Russian sentence as the fallback and passes role ids.
+  const evilTwin = {
+    kind: "note",
+    text: "Покажите Близнецам друг друга: P2 и P1 (Часовщик).",
+    textKey: "note.sv.evilTwin",
+    textVars: { actor: "P2", twin: "P1", twinRole: "clockmaker" },
+  };
+  const hint = infoText(
+    game,
+    { key: "n1-eviltwin", kind: "role", roleId: "eviltwin" } as NightStep,
+    evilTwin,
+    roles,
+    catalogT,
+  );
+  assert.equal(hint, "Show the Evil Twins to each other: P2 and P1 (Clockmaker).");
+  assert.doesNotMatch(hint, /[\u0400-\u04FF]/, "no Cyrillic reaches the English card");
+
+  const pithag = {
+    key: "n2-pithag",
+    kind: "role",
+    roleId: "pithag",
+    note: "Часовщик уже в игре: ничего не происходит.",
+    noteKey: "note.pithagInPlay",
+    noteVars: { role: "clockmaker" },
+  } as NightStep;
+  const note = infoText(game, pithag, { kind: "note" }, roles, catalogT);
+  assert.equal(note, "Clockmaker is already in play: nothing happens.");
+  assert.doesNotMatch(note, /[\u0400-\u04FF]/, "the step note names the role too");
+  setUiLang("ru");
 });
 
 test("a rejected command renders the localized error code, not the engine message", () => {

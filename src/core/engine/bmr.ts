@@ -581,11 +581,12 @@ export function buildBmrNightQueue(state: GameState): NightStep[] {
       const minions = livingPlayers(state).filter(
         (player) => roleTeam(player.roleId || "") === "minion",
       ).length;
-      const bluffs = (state.bluffs || state.setup.bluffs || []).map((id) => roleLabel(id));
+      const bluffIds = (state.bluffs || state.setup.bluffs || []).map(String);
+      const bluffs = bluffIds.map((id) => roleLabel(id));
       setStepNote(
         step,
         "note.bmr.lunaticFirst",
-        { minions, bluffs: bluffs.join(", ") },
+        { minions, bluffs: bluffIds.join(", ") },
         "Покажите Безумцу " +
           minions +
           " указаний на Приспешников и 3 добрые роли (они могут быть и в игре): " +
@@ -599,7 +600,7 @@ export function buildBmrNightQueue(state: GameState): NightStep[] {
         step,
         "note.bmr.godfatherOutsiders",
         { outsiders: outsiders.join(", ") || "—" },
-        "Изгои в игре: " + (outsiders.join(", ") || "—") + ".",
+        "Изгои в игре: " + (outsiders.map(roleLabel).join(", ") || "—") + ".",
       );
     }
     steps.push(step);
@@ -617,7 +618,7 @@ function outsiderCharacters(state: GameState): string[] {
     ...new Set(
       livingPlayers(state)
         .filter((player) => roleTeam(player.roleId || "") === "outsider")
-        .map((player) => roleLabel(player.roleId!)),
+        .map((player) => player.roleId!),
     ),
   ];
 }
@@ -1203,19 +1204,20 @@ export function bmrInfoForStep(state: GameState, step: NightStep, options: BmrIn
       kind: "note",
       textKey: "note.bmr.godfatherOutsiders",
       textVars: { outsiders: outsiders.join(", ") || "—" },
-      text: "Изгои в игре: " + (outsiders.join(", ") || "—") + ".",
+      text: "Изгои в игре: " + (outsiders.map(roleLabel).join(", ") || "—") + ".",
     };
   }
   if (role === "lunatic") {
     if (state.night.number === 1) {
-      const bluffs = (state.bluffs || state.setup.bluffs || []).map((id) => roleLabel(id));
+      const bluffIds = (state.bluffs || state.setup.bluffs || []).map(String);
+      const bluffs = bluffIds.map((id) => roleLabel(id));
       const minions = livingPlayers(state).filter(
         (player) => roleTeam(player.roleId || "") === "minion",
       ).length;
       return {
         kind: "note",
         textKey: "note.bmr.lunaticFirst",
-        textVars: { minions, bluffs: bluffs.join(", ") || "—" },
+        textVars: { minions, bluffs: bluffIds.join(", ") },
         text:
           "Покажите Безумцу " +
           minions +

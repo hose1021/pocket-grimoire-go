@@ -21,6 +21,7 @@ import {
   guideForStep,
   infoText,
   jugglerGuessingDay,
+  localizeVars,
   normalizeJugglerGuesses,
   redirectChoiceValue,
   roleNameOf,
@@ -235,7 +236,9 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
           </p>
           {step.noteKey || step.note ? (
             <p className={MUTED} data-step-note>
-              {step.noteKey ? t(step.noteKey, step.noteVars ?? undefined) : step.note}
+              {step.noteKey
+                ? t(step.noteKey, localizeVars(step.noteVars, ports.roles.byId))
+                : step.note}
             </p>
           ) : null}
           <div className="grid gap-1">
@@ -318,14 +321,21 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
           ) : null}
           {!needsSetup && !targetsIncomplete ? (
             step.roleId === "spy" ? (
-              <button
-                className="btn"
-                type="button"
-                data-act="show-grimoire"
-                onClick={actions.openGrimoire}
-              >
-                {t("ui.showGrimoire")}
-              </button>
+              <div className="grid gap-1">
+                <button
+                  className="btn"
+                  type="button"
+                  data-act="show-grimoire"
+                  onClick={actions.openGrimoire}
+                >
+                  {t("ui.showGrimoire")}
+                </button>
+                {derived.actorImpaired ? (
+                  <p className={`${ALERT} text-amber-2`} data-warning="spyFalseGrimoire">
+                    {t("ui.spyFalseGrimoire")}
+                  </p>
+                ) : null}
+              </div>
             ) : derived.actorImpaired ? (
               <div className="mt-1 grid gap-1.5" data-template>
                 <label className={FIELD_BOX}>

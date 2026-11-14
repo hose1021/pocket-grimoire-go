@@ -735,11 +735,10 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
     const twin = evilTwinPair(state)?.good ?? null;
     return {
       kind: "note",
-      textKey: "note.sv.evilTwin",
-      textVars: {
-        actor: actor ? actor.name : "—",
-        twin: twin ? twin.name + " (" + roleLabel(twin.roleId) + ")" : "—",
-      },
+      textKey: twin ? "note.sv.evilTwin" : "note.sv.evilTwinMissing",
+      textVars: twin
+        ? { actor: actor ? actor.name : "—", twin: twin.name, twinRole: twin.roleId || "" }
+        : { actor: actor ? actor.name : "—" },
       text:
         "Покажите Близнецам друг друга: " +
         (actor ? actor.name : "—") +
@@ -1104,14 +1103,14 @@ export function completeSvStep(
       setStepNote(
         step,
         "note.philosopherOwner",
-        { owner: owner.name, role: roleLabel(roleId) },
+        { owner: owner.name, role: roleId },
         owner.name + " (" + roleLabel(roleId) + ") пьян: способность у Философа.",
       );
     } else {
       setStepNote(
         step,
         "note.philosopherAbility",
-        { role: roleLabel(roleId) },
+        { role: roleId },
         "Философ получает способность: " + roleLabel(roleId) + ".",
       );
     }
@@ -1149,7 +1148,7 @@ export function completeSvStep(
       setStepNote(
         step,
         "note.pithagInPlay",
-        { role: roleLabel(roleId) },
+        { role: roleId },
         roleLabel(roleId) + " уже в игре: ничего не происходит.",
       );
       return { ok: true };
@@ -1166,7 +1165,7 @@ export function completeSvStep(
     setStepNote(
       step,
       "note.characterBecame",
-      { name: target.name, role: roleLabel(roleId) },
+      { name: target.name, role: roleId },
       target.name +
         " становится: " +
         roleLabel(roleId) +
@@ -1298,7 +1297,7 @@ export function completeSvStep(
       setStepNote(
         step,
         "note.madness",
-        { name: target.name, role: roleLabel(roleId) },
+        { name: target.name, role: roleId },
         target.name + " должен быть «помешан» на роли " + roleLabel(roleId) + " до следующей ночи.",
       );
     }

@@ -443,6 +443,7 @@ export default {
     "This target is already dead. The Imp may choose them, but no further death occurs.",
   "ui.mayorDies": "Mayor dies",
   "ui.showGrimoire": "Show grimoire",
+  "ui.spyFalseGrimoire": "The Spy's ability does not work: show a false Grimoire.",
   "ui.announceNames": "Announce names only. Do not reveal causes or roles.",
   "ui.voting": "Voting",
   "ui.executedWho": "Who was executed?",
@@ -926,7 +927,8 @@ export default {
   "note.bmr.godfatherOutsiders": "Outsiders in play: {outsiders}.",
   "note.bmr.lunaticReportNoTarget": "Lunatic: {name}. Tell the Demon.",
   "note.bmr.exorcistMiss": "The target is not the Demon: the ability did not work.",
-  "note.sv.evilTwin": "Show the Evil Twins to each other: {actor} and {twin}.",
+  "note.sv.evilTwin": "Show the Evil Twins to each other: {actor} and {twin} ({twinRole}).",
+  "note.sv.evilTwinMissing": "Show the Evil Twins to each other: {actor} and —.",
   "note.sv.clockmaker": "Distance from the Demon to the nearest Minion: {value}.",
   "note.sv.oracle": "Dead evil players: {value}.",
   "note.sv.dreamer":

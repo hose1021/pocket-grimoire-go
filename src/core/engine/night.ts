@@ -832,7 +832,11 @@ export function finishStep(
     title: (step.roleId ? roleLabel(step.roleId) : step.system) || "Ночной шаг",
     detail: step.note ?? "",
   });
-  // The console renders the localized note instead of the Russian detail.
+  // The console renders the localized note, role and phase instead of the
+  // Russian detail, title and prefix.
+  if (step.roleId) line.roleId = step.roleId;
+  line.phaseCode = "night";
+  line.phaseNumber = nightAt(state).number;
   if (step.noteKey) {
     line.noteKey = step.noteKey;
     line.noteVars = step.noteVars ?? null;

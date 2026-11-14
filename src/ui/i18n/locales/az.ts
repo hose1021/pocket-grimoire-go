@@ -443,6 +443,7 @@ export default {
   "ui.deadTarget": "Hədəf artıq ölüdür. İmp onu seçə bilər, lakin yeni ölüm olmur.",
   "ui.mayorDies": "Mer ölür",
   "ui.showGrimoire": "Qrimuarı göstər",
+  "ui.spyFalseGrimoire": "Casusun qabiliyyəti işləmir: saxta qrimuar göstərin.",
   "ui.announceNames": "Yalnız adları elan edin. Səbəbləri və rolları açıqlamayın.",
   "ui.voting": "Səsvermə",
   "ui.executedWho": "Kim edam edildi?",
@@ -916,7 +917,8 @@ export default {
   "note.bmr.godfatherOutsiders": "Oyundakı Kənarçılar: {outsiders}.",
   "note.bmr.lunaticReportNoTarget": "Dəli: {name}. Bunu Demona deyin.",
   "note.bmr.exorcistMiss": "Hədəf Demon deyil: qabiliyyət işləmədi.",
-  "note.sv.evilTwin": "Pis əkizləri bir-birinə göstərin: {actor} və {twin}.",
+  "note.sv.evilTwin": "Pis əkizləri bir-birinə göstərin: {actor} və {twin} ({twinRole}).",
+  "note.sv.evilTwinMissing": "Pis əkizləri bir-birinə göstərin: {actor} və —.",
   "note.sv.clockmaker": "Demondan ən yaxın Nökərə qədər məsafə: {value}.",
   "note.sv.oracle": "Ölü pis oyunçular: {value}.",
   "note.sv.dreamer":

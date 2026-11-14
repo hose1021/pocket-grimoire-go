@@ -4,7 +4,7 @@ import { useState } from "react";
 import { tableProjection } from "../../../application/read-models/table.ts";
 import { playerById } from "../../../core/model/state.ts";
 import { EventLog } from "../../components/arcane/index.ts";
-import { displayName, roleNameOf, timerText } from "./helpers.ts";
+import { displayName, localizeVars, roleNameOf, timerText } from "./helpers.ts";
 import { PanelHead, RoleToken, Warn } from "./parts.tsx";
 import type { TableView } from "./view.ts";
 import { INLINE, MUTED, PANEL, QUEUE_ITEM } from "./styles.ts";
@@ -41,17 +41,29 @@ export function SidePanel({ view, className = "" }: { view: TableView; className
           const time = entry.at
             ? new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : "";
-          // A step line carries the catalog key of its note; the Russian detail
-          // stays for lines written before the key existed.
+          // A step line carries the catalog key of its note, its role and its
+          // night; the Russian strings stay for lines written before them.
           const noteVars =
             entry.noteVars && typeof entry.noteVars === "object"
-              ? (entry.noteVars as Record<string, string | number>)
+              ? (entry.noteVars as Record<string, unknown>)
               : undefined;
           const detail =
-            typeof entry.noteKey === "string" ? t(entry.noteKey, noteVars) : entry.detail;
+            typeof entry.noteKey === "string"
+              ? t(entry.noteKey, localizeVars(noteVars, ports.roles.byId))
+              : entry.detail;
+          const phaseNumber = typeof entry.phaseNumber === "number" ? entry.phaseNumber : 0;
+          const phase =
+            entry.phaseCode === "night" || entry.phaseCode === "day"
+              ? phaseNumber
+                ? t(entry.phaseCode) + " " + phaseNumber
+                : t(entry.phaseCode)
+              : entry.phase;
           return {
-            title: entry.title,
-            detail: `${entry.phase}${detail ? " · " + detail : ""}`,
+            title:
+              typeof entry.roleId === "string"
+                ? roleNameOf(entry.roleId, ports.roles.byId)
+                : entry.title,
+            detail: `${phase}${detail ? " · " + detail : ""}`,
             ...(time ? { time } : {}),
             scope,
             ...(scope === "death" ? { tone: "danger" as const } : {}),

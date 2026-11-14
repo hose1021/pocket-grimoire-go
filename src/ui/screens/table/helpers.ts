@@ -354,6 +354,40 @@ export function roleNameOf(id: string | null | undefined, roles: RoleLookup): st
   return role ? role.name : roleLabel(id || "");
 }
 
+// The engine hands over role ids for these variables; everything else is text.
+const ROLE_VARS: Record<string, true> = {
+  role: true,
+  roleId: true,
+  twinRole: true,
+  shown: true,
+  bluffs: true,
+  outsiders: true,
+};
+
+/**
+ * Names every role-typed hint variable from the locale catalog, so an English
+ * or Azerbaijani card never prints the engine's Russian label. Lists arrive as
+ * comma-joined ids. A save written before the ids still carries a label, and
+ * `roleNameOf` keeps that label when the catalog has no such id.
+ */
+export function localizeVars(
+  vars: Record<string, unknown> | null | undefined,
+  roles: RoleLookup,
+): Record<string, string | number> | undefined {
+  if (!vars) return undefined;
+  const out: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(vars)) {
+    if (value === undefined || value === null) continue;
+    if (!ROLE_VARS[key]) {
+      out[key] = Array.isArray(value) ? value.join(", ") : (value as string | number);
+      continue;
+    }
+    const ids = Array.isArray(value) ? value.map(String) : String(value).split(",");
+    out[key] = ids.map((id) => roleNameOf(id.trim(), roles)).join(", ");
+  }
+  return out;
+}
+
 export function stepTitle(
   step: NightStep | null | undefined,
   roles: RoleLookup,
@@ -447,14 +481,9 @@ export function infoText(
   if (!info) return t("none");
   const roleName = (id: string | null | undefined) => roleNameOf(id, roles);
   // The engine hint carries a catalog key; the stored Russian sentence is the
-  // fallback for results saved before that key existed.
-  // The engine builds its variables per branch, so a keyed hint can carry
-  // optional values as undefined; the catalogs only read the defined ones.
-  const hintVars = info.textVars
-    ? (Object.fromEntries(
-        Object.entries(info.textVars).filter(([, value]) => value !== undefined),
-      ) as Record<string, string | number>)
-    : undefined;
+  // fallback for results saved before that key existed. Role-typed variables
+  // arrive as ids and are named from the catalog here.
+  const hintVars = localizeVars(info.textVars, roles);
   const hint = info.textKey
     ? t(info.textKey, hintVars) + (info.falsifiedSuffix ? " " + t("note.sv.falseSuffix") : "")
     : info.text;
@@ -463,7 +492,7 @@ export function infoText(
     // live information. A step whose computed text is just its static note
     // keeps the localized key.
     if (hint && (hint !== step.note || !step.noteKey)) return hint;
-    if (step.noteKey) return t(step.noteKey, step.noteVars ?? undefined);
+    if (step.noteKey) return t(step.noteKey, localizeVars(step.noteVars, roles));
     return hint || t("none");
   }
   if (info.kind === "one-of-two") {
