@@ -53,8 +53,10 @@ implemented here.
 - The `/table` demo button opens `/demo` instead of rebuilding a demo game on
   the saved store.
 
-Out of scope: Sects & Violets Flowergirl/Town Crier (needs a new vote-source
-command), every rule change in `src/core/**`, and the demo screen itself.
+Out of scope: every rule change in `src/core/**` itself, and the demo screen
+implementation (the button only routes to it). The Sects & Violets
+Flowergirl/Town Crier answer is covered: the engine asks the host when no ended
+day exists, so no vote-source command is needed.
 
 ## Capabilities
 

@@ -61,13 +61,17 @@ menu. The existing `data-madness-*`, `data-winner-team` and
 - **Tinker (BMR22)**: the engine owner landed `tinkerDeath` (`{ playerId }`),
   which records a real ability death for a sober, living Tinker. The day control
   dispatches it instead of a manual correction.
-- **Flowergirl / Town Crier (SV3)**: deliberately not implemented; it needs a
-  vote ledger or a host answer command.
+- **Flowergirl / Town Crier (SV3)**: landed without a vote ledger. The engine
+  demands a host answer when the ended day is missing, and the console renders
+  the yes/no control for that answer; each answer is stored on the step, so no
+  separate vote source is needed.
 - **Juggler first day (SV11)**: the console reads `state.juggler.day` first and
   uses `jugglerGuessingDay` as the fallback for a first report before any guess
   exists; a persisted first-day value on role gain would remove the fallback.
-- **Klutz public choice (SV4)**: the `recordKlutzChoice` command now exists; the
-  day-card control is the next UI pass.
+- **Klutz public choice (SV4)**: the `recordKlutzChoice` command exists and the
+  queued Klutz step records the chosen living player, so the console resolves an
+  evil choice as soon as the death is announced; no separate day-card control is
+  required.
 
 ## Tests
 

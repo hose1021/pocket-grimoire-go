@@ -83,8 +83,10 @@
   `jugglerGuess` with `{ playerId, roleId }` or `{ guesses: [] }`.
 - [ ] 8.4 SV4 Klutz: the `recordKlutzChoice` command now exists; the day-card
   control is the next UI pass.
-- [ ] 8.5 SV3 Flowergirl/Town Crier: out of scope; needs a vote source or a host
-  answer command.
+- [x] 8.5 SV3 Flowergirl/Town Crier: the host answers through the step's
+  yes/no control when the ended day is missing; `snv.test.ts` "the Flowergirl and
+  Town Crier need a host answer without the ended day" and the `sv-15-vortox`
+  game assert it.
 - [ ] 8.6 `scripts/browser-check.mjs` must open the table menu where the day
   check used day help: `data-madness-review` and `data-madness-*`, and
   `data-winner-team` plus `data-act="declare-winner"`, moved to the menu.
