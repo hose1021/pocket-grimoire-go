@@ -115,6 +115,7 @@ test("custom suggestions produce three distinct legal bags at every count for ev
             roles: bag.roles,
             bluffs: bag.bluffs,
             drunkShownId: bag.drunkShownId,
+            lunaticShownId: bag.lunaticShownId,
             pool,
           }),
           [],

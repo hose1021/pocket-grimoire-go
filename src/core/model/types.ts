@@ -21,6 +21,8 @@ export type CommandType =
   | "gossipStatement"
   | "jugglerGuess"
   | "moonchildChoice"
+  | "recordKlutzChoice"
+  | "tinkerDeath"
   | "recoverClaim"
   | "dealGame"
   | "startGame"
@@ -250,6 +252,9 @@ export interface NightStep {
   canKill?: boolean;
   canResurrect?: boolean;
   note?: string | null;
+  /** Locale-neutral console key; `note` stays the persisted fallback. */
+  noteKey?: string | null;
+  noteVars?: Record<string, string | number> | null;
   targetIds?: string[];
   done?: boolean;
   pending?: PendingStep | null;
@@ -262,6 +267,8 @@ export interface NightStep {
   demonId?: string | null;
   bluffs?: string[];
   registrations?: Record<string, string>;
+  /** Characters the host may name for this step (Courtier, Gambler, Cerenovus, Pit-Hag). */
+  roleChoices?: RoleId[];
   previousTarget?: string;
   given?: Record<string, unknown> | null;
   result?: Record<string, unknown> | null;
@@ -399,10 +406,17 @@ export interface Gossip {
   [key: string]: unknown;
 }
 
-// The Juggler's public first-day guesses, keyed by the guessed player's id.
+// The Juggler's public first-day guesses. The current shape is a list because
+// the same player may be guessed more than once; a saved game may still carry
+// the legacy player-id map, which both the engine and the validator read.
+export interface JugglerGuess {
+  playerId: string;
+  roleId: RoleId;
+}
+
 export interface Juggler {
   day: number;
-  guesses: Record<string, RoleId>;
+  guesses: JugglerGuess[] | Record<string, RoleId>;
   [key: string]: unknown;
 }
 

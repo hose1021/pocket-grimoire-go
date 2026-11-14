@@ -10,11 +10,12 @@ import {
   isSupportedRole,
   roleTeam,
 } from "../model/rules.ts";
+import type { SetupProblem } from "../model/rules.ts";
 import { orderedPlayers, playerById, realTeamOf } from "../model/state.ts";
 
 import { addLog } from "./context.ts";
 
-export function setupErrors(state: GameState): { code: string; message: string }[] {
+export function setupErrors(state: GameState): SetupProblem[] {
   const errors = bagErrors({
     count: state.setup.count,
     roles: state.setup.roles,
@@ -48,7 +49,7 @@ export function setupErrors(state: GameState): { code: string; message: string }
   return errors;
 }
 
-export function secretsErrors(state: GameState): { code: string; message: string }[] {
+export function secretsErrors(state: GameState): SetupProblem[] {
   const errors = setupErrors(state);
   if (errors.length) return errors;
   if (state.phase === "setup") {
@@ -85,10 +86,15 @@ export function secretsErrors(state: GameState): { code: string; message: string
     if (!has(roleId)) continue;
     const info = state.setup.info[roleId];
     if (roleId === "librarian" && info && "zero" in info && info.zero) {
-      if (players.some((player) => roleTeam(player.roleId || "") === "outsider")) {
+      // The zero is true while every Outsider in play can register as
+      // something else: the Recluse may register as a Minion or a Demon.
+      const fixedOutsider = players.some(
+        (player) => roleTeam(player.roleId || "") === "outsider" && player.roleId !== "recluse",
+      );
+      if (fixedOutsider) {
         errors.push({
           code: "librarian-zero",
-          message: "Библиотекарь не может узнать «ноль», если Изгои в игре есть.",
+          message: "Библиотекарь не может узнать «ноль», если в игре есть Изгой, кроме Отшельника.",
         });
       }
       continue;
@@ -121,14 +127,25 @@ export function secretsErrors(state: GameState): { code: string; message: string
         message: label + ": выбранная роль не того типа.",
       });
     }
-    if (!state.setup.roles.includes(pairInfo.roleId)) {
+    const infoTeam = roleTeam(pairInfo.roleId);
+    const pairPlayers = pairInfo.pair.map((id) => playerById(state, id));
+    // A shown character that is not in play is legal when a Spy registers as
+    // it (Townsfolk or Outsider) or a Recluse registers as a Minion.
+    const registering = pairPlayers.some(
+      (player) =>
+        player &&
+        (infoTeam === "townsfolk" || infoTeam === "outsider"
+          ? player.roleId === "spy"
+          : infoTeam === "minion"
+            ? player.roleId === "recluse"
+            : false),
+    );
+    if (!state.setup.roles.includes(pairInfo.roleId) && !registering) {
       errors.push({
         code: "info-inplay-" + roleId,
         message: label + ": выбранная роль должна быть в игре.",
       });
     }
-    const infoTeam = roleTeam(pairInfo.roleId);
-    const pairPlayers = pairInfo.pair.map((id) => playerById(state, id));
     const includesTrue = pairPlayers.some(
       (player) =>
         player &&
@@ -151,6 +168,8 @@ export function secretsErrors(state: GameState): { code: string; message: string
   if (maskCheck) {
     const info = state.setup.info[mask];
     const pairInfo = info ? (info as InfoPair) : null;
+    // False information may be anything, including the Librarian's zero.
+    const zeroInfo = mask === "librarian" && info !== null && info !== undefined && "zero" in info;
     const expectedTeam = maskCheck[1];
     const validPair =
       pairInfo &&
@@ -161,16 +180,18 @@ export function secretsErrors(state: GameState): { code: string; message: string
       pairInfo.pair[0] !== pairInfo.pair[1] &&
       players.some((player) => player.id === pairInfo.pair[0]) &&
       players.some((player) => player.id === pairInfo.pair[1]);
-    if (!pairInfo || !pairInfo.forDrunk || !pairInfo.roleId || !validPair) {
-      errors.push({
-        code: "drunk-info",
-        message: "Пьяница: выберите ложную роль и двух игроков.",
-      });
-    } else if (roleTeam(pairInfo.roleId) !== expectedTeam) {
-      errors.push({
-        code: "drunk-info-team",
-        message: "Пьяница: ложная роль должна быть того же типа, что показанная роль.",
-      });
+    if (!zeroInfo) {
+      if (!pairInfo || !pairInfo.forDrunk || !pairInfo.roleId || !validPair) {
+        errors.push({
+          code: "drunk-info",
+          message: "Пьяница: выберите ложную роль и двух игроков.",
+        });
+      } else if (roleTeam(pairInfo.roleId) !== expectedTeam) {
+        errors.push({
+          code: "drunk-info-team",
+          message: "Пьяница: ложная роль должна быть того же типа, что показанная роль.",
+        });
+      }
     }
   }
   return errors;
@@ -242,6 +263,25 @@ export function dealGame(
         return { ok: false, error: "Роль не входит в сценарий: " + roleId };
       }
     }
+    // The assignment must place every bag role once over the seat order. A
+    // duplicate, a role outside the bag or a seat without a role would deal a
+    // character the table does not have.
+    const placed: string[] = [];
+    for (const player of orderedPlayers(state)) {
+      const roleId = assignment[player.id];
+      if (!roleId) {
+        return {
+          ok: false,
+          error: "Раздача не совпадает с составом: у места " + player.seat + " нет роли.",
+        };
+      }
+      placed.push(roleId);
+    }
+    const bag: string[] = roles.slice().sort();
+    const dealt: string[] = placed.sort();
+    if (bag.length !== dealt.length || bag.some((id, at) => id !== dealt[at])) {
+      return { ok: false, error: "Раздача не совпадает с составом мешка." };
+    }
   }
 
   const shuffled = roles.slice();
@@ -260,7 +300,7 @@ export function dealGame(
       roleId === "drunk"
         ? state.setup.drunkShownId
         : roleId === "lunatic"
-          ? state.setup.lunaticShownId || roleId
+          ? state.setup.lunaticShownId
           : roleId;
     player.roleId = roleId || null;
     player.shownRoleId = shown || null;
@@ -310,6 +350,12 @@ export function dealGame(
   state.juggler = null;
   state.lastDay = null;
   state.fangguJumped = false;
+  // A new deal starts from a clean slate: the old gossip, grandchild choice,
+  // manual corrections and host notes belong to the previous game.
+  state.gossip = null;
+  state.setup.grandmotherId = null;
+  state.corrections = [];
+  state.notes = "";
   state.winner = null;
   state.reviewOpen = false;
   state.publicRevealed = false;

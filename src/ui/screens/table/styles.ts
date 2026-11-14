@@ -4,17 +4,6 @@
 
 export const HOST = "min-w-0";
 
-export const GRID =
-  "grid min-w-0 grid-cols-[290px_minmax(0,1fr)_330px] items-stretch h-[calc(100dvh-56px)] overflow-hidden max-[1200px]:grid-cols-[290px_minmax(0,1fr)] max-[1200px]:h-auto max-[900px]:flex max-[900px]:h-auto max-[900px]:flex-col";
-
-export const MAIN_COL =
-  "grid min-w-0 content-start gap-2.5 overflow-auto border-r border-edge bg-gradient-to-b from-crypt-2 to-crypt p-3.5 max-[1200px]:order-2 max-[900px]:order-2 max-[900px]:w-full max-[900px]:border-r-0 max-[900px]:border-b";
-
-export const RING_COL = "grid min-w-0 place-items-center";
-
-export const SIDE_COL =
-  "grid min-w-0 content-start gap-2.5 overflow-auto border-l border-edge bg-gradient-to-b from-crypt-2 to-crypt p-3.5 max-[1200px]:col-span-2 max-[1200px]:grid-cols-2 max-[1200px]:border-l-0 max-[1200px]:border-t max-[900px]:order-3 max-[900px]:w-full max-[900px]:grid-cols-1";
-
 export const PANEL = "host-panel min-w-0 rounded-md border border-edge bg-crypt-2 p-3";
 
 export const PANEL_HEAD = "mb-[7px] flex flex-wrap items-baseline justify-between gap-1.5";
@@ -59,8 +48,6 @@ export const CHECK = "my-[5px] flex items-start gap-[7px] text-[13px] text-muted
 
 export const INLINE = "flex flex-wrap items-center gap-1.5";
 
-export const ACTIONS = "mt-3 flex flex-wrap gap-[7px]";
-
 export const PRIMARY = "min-h-11 flex-[1_1_220px]";
 
 export const INFO_PREVIEW =
@@ -85,16 +72,9 @@ export const TOKEN_MINI_IMG = "h-[28px] w-[28px] object-contain";
 
 export const TOKEN_MINI_NAME = "text-[8px] font-normal text-muted";
 
-export const SEAT = "min-w-0 rounded-md border border-edge bg-crypt-3";
-
-export const TEAM_DOT = "h-1.5 w-1.5 rounded-full";
-
 export const CHIPS = "mt-0.5 flex flex-wrap gap-[3px]";
 
 export const QUEUE_ITEM =
   "grid grid-cols-[10px_minmax(0,1fr)] items-start gap-1.5 rounded-sm px-1 py-[5px]";
-
-export const OVERLAY =
-  "fixed inset-0 z-[120] grid place-items-center bg-crypt/95 p-[18px] backdrop-blur-[7px]";
 
 export const GRIMOIRE = "fixed inset-0 z-[140] overflow-auto bg-crypt p-[18px]";

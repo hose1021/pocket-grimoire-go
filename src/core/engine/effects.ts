@@ -4,7 +4,7 @@ type Graph = EffectGraphResult;
 
 // Trouble Brewing domain: effects. No DOM or persistence.
 
-import { playerById } from "../model/state.ts";
+import { playerById, registersAlive } from "../model/state.ts";
 import { effectGraph } from "../model/effect-graph.ts";
 
 import { currentAt, cycleOf } from "./context.ts";
@@ -19,6 +19,9 @@ export function effectActive(
   if (effect.start && cycleOf(at) < cycleOf(effect.start)) return false;
   if (effect.expires && cycleOf(at) >= cycleOf(effect.expires)) return false;
   if (effect.kind === "role-change") return true;
+  // A placed Witch curse stays until it resolves or three players live; the
+  // source's later death or impairment does not remove it (Witch r3013).
+  if (effect.kind === "witch") return true;
   // The Cerenovus already chose at night: the player stays mad during that day
   // even if the source is executed or dies before the day begins.
   if (effect.kind === "madness" && effect.madness === "cerenovus") return true;
@@ -124,7 +127,7 @@ function neighbourPair(state: GameState, playerId: string): string[] {
     for (let step = 1; step < ids.length; step += 1) {
       const id = ids[(seat + direction * step + ids.length * step) % ids.length]!;
       const player = playerById(state, id);
-      if (player && player.alive) return id;
+      if (player && registersAlive(player)) return id;
     }
     return null;
   };
@@ -151,7 +154,7 @@ function teaLadyProtects(state: GameState, targetId: string, at: DeadAt): string
   // matters for the Tea Lady. The Tea Lady herself must not be impaired.
   const bothGood = neighbours.every((id) => {
     const player = playerById(state, id);
-    return player && player.alive && player.team === "good";
+    return player !== null && registersAlive(player) && player.team === "good";
   });
   if (!bothGood) return null;
   return "tea-lady";
@@ -174,9 +177,20 @@ export function bmrCannotDie(
   if (player.roleId === "zombuul" && sober && !(player.used && player.used.zombuul))
     return "zombuul";
   if (bypass) return null;
-  if (player.roleId === "fool" && sober && !(player.used && player.used.fool)) return "fool";
+  if (cause === "execution") {
+    const advocate = state.effects.find(
+      (effect) =>
+        effect.kind === "devilsadvocate" &&
+        effect.targetId === playerId &&
+        effectActive(state, effect, at) &&
+        effect.day === at.number,
+    );
+    if (advocate) return "devilsadvocate";
+  }
   if (player.roleId === "soldier" && sober && (cause === "demon" || cause === "ability"))
     return "soldier";
+  // Sailor r1768: "You can't die." The sober Sailor survives any cause,
+  // including an execution; only a bypassing ability (the Assassin) kills.
   if (player.roleId === "sailor" && sober) return "sailor";
   if (teaLadyProtects(state, playerId, at)) return "tea-lady";
   const innkeeper = state.effects.find(
@@ -188,15 +202,8 @@ export function bmrCannotDie(
       (cause === "demon" || cause === "ability"),
   );
   if (innkeeper) return "innkeeper";
-  if (cause === "execution") {
-    const advocate = state.effects.find(
-      (effect) =>
-        effect.kind === "devilsadvocate" &&
-        effect.targetId === playerId &&
-        effectActive(state, effect, at) &&
-        effect.day === at.number,
-    );
-    if (advocate) return "devilsadvocate";
-  }
+  // Fool r2636: the ability is spent only when it was the reason the death was
+  // prevented, so the Tea Lady and Innkeeper protections resolve first.
+  if (player.roleId === "fool" && sober && !(player.used && player.used.fool)) return "fool";
   return null;
 }

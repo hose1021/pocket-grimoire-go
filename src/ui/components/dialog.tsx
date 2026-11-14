@@ -40,7 +40,7 @@ export function Dialog({
         />
         <DialogPrimitive.Content
           aria-modal="true"
-          className="fixed left-1/2 top-1/2 z-1000 w-[min(calc(100vw-24px),560px)] -translate-x-1/2 -translate-y-1/2 rounded-(--radius) border border-edge-2 bg-crypt-2 p-(--pad) text-text shadow-lg"
+          className="fixed left-1/2 top-1/2 z-1000 max-h-[calc(100dvh-24px)] w-[min(calc(100vw-24px),560px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-(--radius) border border-edge-2 bg-crypt-2 p-(--pad) text-text shadow-lg"
         >
           <DialogPrimitive.Title className="mb-2 text-base font-semibold">
             {title}

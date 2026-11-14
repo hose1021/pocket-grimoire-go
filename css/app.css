@@ -85,6 +85,17 @@
   --color-parchment: #e8dcc0;
   --color-ink: #2b2118;
   --color-ink-2: #5c4a37;
+
+  /* The Velvet table: one felt per phase, three action roles and the
+     parchment card the Storyteller hands to a player. */
+  --color-felt-day: #0f5c46;
+  --color-felt-night: #1a2350;
+  --color-table-primary: #3ddc97;
+  --color-table-primary-ink: #04170f;
+  --color-table-secondary: #86a6cd;
+  --color-table-danger: #e0344a;
+  --color-card-parchment: #f4ebd7;
+  --color-card-ink: #241b12;
   --shadow-deep: 0 24px 60px rgba(0, 0, 0, 0.55);
   --shadow-glow: 0 0 24px rgba(230, 169, 76, 0.3);
   --radius-sm: 4px;

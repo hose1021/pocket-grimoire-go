@@ -6,6 +6,8 @@ import type { GameSnapshot } from "../../application/store/create-game-store.ts"
 import { SetupShell } from "../components/setup-shell.tsx";
 import { useShellPorts } from "../ports.ts";
 import { useGame } from "../store/use-game.ts";
+import { publicSeats } from "./seat-projection.ts";
+import { commandRejectionText } from "./setup-messages.ts";
 
 const EMPTY_NOTE = "Нажмите место, затем другое, чтобы поменять.";
 
@@ -59,11 +61,10 @@ export function SeatScreen() {
     return () => listeners.current?.abort();
   }, []);
 
-  const nameOf = (id: string) => {
-    const player = state.players[id];
-    if (!player) return "";
-    return player.name || "Игрок " + (draft.indexOf(id) + 1);
-  };
+  // The route is readable by anyone at the table, so it renders names and seat
+  // numbers only (`SPEC.md` `/seat` "names only"). Roles never enter this view.
+  const seats = publicSeats(draft, state.players);
+  const nameOf = (id: string) => seats.find((seat) => seat.id === id)?.name ?? "";
 
   const announce = (text: string) => setStatus(text);
 
@@ -82,9 +83,8 @@ export function SeatScreen() {
     next[to] = held;
     pick(null);
     setDraft(next);
-    const arriving = state.players[held];
-    const arrivingName = arriving && (arriving.name || "Игрок " + (to + 1));
-    announce(`${arrivingName || ""} now sits at seat ${to + 1}.`);
+    const arriving = publicSeats(next, state.players)[to]?.name;
+    announce(`${arriving || "Игрок " + (to + 1)} now sits at seat ${to + 1}.`);
   };
 
   const activate = (index: number) => {
@@ -130,7 +130,7 @@ export function SeatScreen() {
   const useOrder = () => {
     const result = ports.commands.setOrder(draft.slice());
     if (result.status !== "allowed") {
-      window.alert(result.reason || "Не удалось изменить порядок мест.");
+      window.alert(commandRejectionText(result) || "Не удалось изменить порядок мест.");
       return;
     }
     const dealt = draft.some((id) => state.players[id]?.roleId);
@@ -258,7 +258,6 @@ export function SeatScreen() {
   const deadCount = draft.filter((id) => state.players[id]?.alive === false).length;
   const radius = dense ? 42 : 40;
   const ghostPlayer = dragIndex === null ? null : draft[dragIndex];
-  const ghostRole = ghostPlayer ? ports.roles.byId(state.players[ghostPlayer]?.roleId ?? "") : null;
   const ringClass = [
     "seat-ring relative mx-auto aspect-square w-[min(650px,66vh)] max-w-full max-sm:w-[min(92vw,340px)]",
     dense
@@ -298,21 +297,15 @@ export function SeatScreen() {
                 {ports.strings.text("Seat order")}
               </h2>
               <ol className="mt-2 grid list-none gap-1 p-0">
-                {draft.map((id, index) => {
-                  const role = state.players[id]?.roleId
-                    ? ports.roles.byId(state.players[id].roleId ?? "")
-                    : null;
-                  return (
-                    <li
-                      key={id}
-                      className="flex items-center gap-2 border-b border-edge/60 pb-1 text-[10.5px] last:border-0"
-                    >
-                      <b className="w-5 text-muted tabular-nums">{index + 1}</b>
-                      <span className="min-w-0 flex-1 truncate">{nameOf(id)}</span>
-                      <small className="text-muted">{role?.name ?? ""}</small>
-                    </li>
-                  );
-                })}
+                {draft.map((id, index) => (
+                  <li
+                    key={id}
+                    className="flex items-center gap-2 border-b border-edge/60 pb-1 text-[10.5px] last:border-0"
+                  >
+                    <b className="w-5 text-muted tabular-nums">{index + 1}</b>
+                    <span className="min-w-0 flex-1 truncate">{nameOf(id)}</span>
+                  </li>
+                ))}
               </ol>
             </section>
           </aside>
@@ -388,8 +381,6 @@ export function SeatScreen() {
                   />
                 </svg>
                 {draft.map((id, index) => {
-                  const player = state.players[id];
-                  const role = player ? ports.roles.byId(player.roleId ?? "") : null;
                   const name = nameOf(id);
                   const angle = -Math.PI / 2 + (index * 2 * Math.PI) / draft.length;
                   const style = {
@@ -436,18 +427,9 @@ export function SeatScreen() {
                           ].join(" ")}
                           aria-hidden="true"
                         />
-                        {role ? (
-                          <img
-                            className="seat-role absolute inset-0 z-10 m-auto size-full object-cover"
-                            src={ports.roles.image(role)}
-                            alt=""
-                            draggable={false}
-                          />
-                        ) : (
-                          <span className="seat-mono absolute inset-0 z-10 grid place-items-center font-role text-[20px] text-parchment max-sm:text-[14px]">
-                            {name.charAt(0).toUpperCase() || "?"}
-                          </span>
-                        )}
+                        <span className="seat-mono absolute inset-0 z-10 grid place-items-center font-role text-[20px] text-parchment max-sm:text-[14px]">
+                          {name.charAt(0).toUpperCase() || "?"}
+                        </span>
                         <span
                           className={[
                             "seat-num absolute bottom-[1px] left-1/2 z-20 -translate-x-1/2 rounded-[3px] border bg-crypt px-1 text-[8px] tabular-nums",
@@ -462,11 +444,6 @@ export function SeatScreen() {
                       <span className="seat-name mt-1 block w-full truncate text-center text-[10.5px] font-semibold leading-tight text-text max-sm:text-left max-sm:text-[11px]">
                         {name}
                       </span>
-                      {role ? (
-                        <span className="block w-full truncate text-center text-[8px] uppercase tracking-[.1em] text-muted max-sm:text-left">
-                          {role.name}
-                        </span>
-                      ) : null}
                       {index === 0 ? (
                         <span className="rounded-[2px] border border-amber-dim px-1 py-px text-[7px] uppercase tracking-[.1em] text-amber">
                           {ports.strings.text("Start")}
@@ -539,7 +516,8 @@ export function SeatScreen() {
             <section className="rounded-md border border-edge bg-crypt-2 p-3">
               <h2 className="m-0 text-[9px] uppercase tracking-[.18em] text-muted">Соседи</h2>
               <p className="mt-2 text-[10px] leading-relaxed text-muted">
-                У Игрока 2 соседи 1 и 3. Эмпат считает злых среди живых соседей.
+                Соседи — игроки слева и справа от места. Способности, которые читают соседей,
+                учитывают только живых.
               </p>
             </section>
             <section className="rounded-md border border-edge bg-crypt-2 p-3">
@@ -565,17 +543,9 @@ export function SeatScreen() {
             <span className="seat-num absolute -left-0.5 -top-0.5 grid size-5 place-items-center rounded-sm border border-edge-2 bg-crypt text-[9.5px] tabular-nums text-muted">
               {(dragIndex ?? 0) + 1}
             </span>
-            {ghostRole ? (
-              <img
-                className="seat-role size-full rounded-full object-cover"
-                src={ports.roles.image(ghostRole)}
-                alt=""
-              />
-            ) : (
-              <span className="seat-mono font-role text-[23px] text-parchment">
-                {(state.players[ghostPlayer]?.name || "?").charAt(0).toUpperCase()}
-              </span>
-            )}
+            <span className="seat-mono font-role text-[23px] text-parchment">
+              {(nameOf(ghostPlayer) || "?").charAt(0).toUpperCase()}
+            </span>
           </span>
           <span className="seat-name block w-full truncate text-center text-[11.5px] text-text">
             {state.players[ghostPlayer]?.name ?? ""}

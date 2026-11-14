@@ -32,9 +32,12 @@ and language catalogs reliably.
 
 ## Routes
 
-- `/table` — Storyteller console: deal, night, dawn, execution result, win and
-  review. Nominations and votes are run at the table; the app records only the
-  execution result and the Virgin’s first nomination.
+- `/table` — Storyteller console: one host table with the seat ring, the centre
+  hub and the fixed action dock. The hub carries the dawn report, the
+  nomination, the votes and the `ceil(living / 2)` threshold; the dock records
+  the votes, the execution and the day. A full-screen player card shows a role
+  card, the night information or a host template. Win and review stay in the
+  table window.
 - `/bag` — player count, scenario picker, three suggested bags per count, a
   searchable 72-role manual picker, a random legal bag, Drunk mask and Demon
   bluffs. Named pools and bags can be saved, exported and imported. Same-edition
@@ -97,10 +100,11 @@ the fallback and the worker, and uploads `dist/`. Keep `.nojekyll`.
 
 ## Live play and recovery
 
-On phones the console has Play, Players, and Queue & Tools tabs. Detailed
-Storyteller guidance starts collapsed and remembers your preference. Use a
-a player's correction dialog to reopen a mistaken role claim; provide a reason.
-Returning from a player-facing route opens the console directly.
+On phones the table window is one column: the app bar, the scrollable table
+stage and the fixed dock. Detailed Storyteller guidance starts collapsed and
+remembers your preference. Use a player's correction dialog to reopen a
+mistaken role claim; provide a reason. Returning from a player-facing route
+opens the console directly.
 
 Public tabs update from saved changes. A failed save shows a persistent warning:
 export before closing the tab.

@@ -36,7 +36,11 @@ export function publicSnapshot(state: GameState): PublicSnapshot {
     (death) => death.playerId,
   );
   const registered = order.filter((id) => state.players[id] && state.players[id].registeredDead);
-  const deaths = [...new Set([...announced, ...registered])]
+  const executed =
+    state.day && state.day.execution && state.day.execution.deathId
+      ? [state.day.execution.playerId]
+      : [];
+  const deaths = [...new Set([...announced, ...executed, ...registered])]
     .map((id) => seatName(state, id))
     .filter((name) => name.length > 0);
   return {

@@ -390,6 +390,59 @@ export const ROLE_REMINDERS_RU: Record<RoleId, string[]> = {
   ravenkeeper: [],
   soldier: [],
   mayor: [],
+  // Bad Moon Rising. The tokens are the Storyteller reminders the Secrets
+  // screen lists for the roles in the bag.
+  chambermaid: ["Проснулся"],
+  courtier: ["Пьян"],
+  exorcist: ["Не может"],
+  fool: ["Без способности"],
+  gambler: ["Без способности"],
+  gossip: ["Слух"],
+  grandmother: ["Внук"],
+  innkeeper: ["Пьян", "Защищён"],
+  minstrel: ["Пьян"],
+  pacifist: ["Выжил"],
+  professor: ["Воскрешён"],
+  sailor: ["Пьян"],
+  tealady: ["Защищён"],
+  goon: ["Добрый"],
+  lunatic: ["Безумец"],
+  moonchild: ["Выбрал"],
+  tinker: ["Мёртв"],
+  assassin: ["Без способности"],
+  devilsadvocate: ["Защищён"],
+  godfather: ["Убит"],
+  mastermind: ["Кукловод"],
+  po: ["Цель"],
+  pukka: ["Отравлен"],
+  shabaloth: ["Съеден"],
+  zombuul: ["Мёртв"],
+  // Sects & Violets.
+  artist: ["Вопрос"],
+  clockmaker: ["Расстояние"],
+  dreamer: ["Сон"],
+  flowergirl: ["Голосовал"],
+  juggler: ["Угадал"],
+  mathematician: ["Число"],
+  oracle: ["Мёртвые"],
+  philosopher: ["Способность"],
+  sage: ["Убийца"],
+  savant: ["Правда", "Ложь"],
+  seamstress: ["Правда"],
+  snakecharmer: ["Отравлен"],
+  towncrier: ["Номинировал"],
+  barber: ["Смена"],
+  klutz: ["Выбрал"],
+  mutant: ["Безумие"],
+  sweetheart: ["Пьян"],
+  cerenovus: ["Безумие"],
+  eviltwin: ["Близнец"],
+  pithag: ["Изменён"],
+  witch: ["Проклят"],
+  fanggu: ["Прыжок"],
+  nodashii: ["Отравлен"],
+  vigormortis: ["Отравлен"],
+  vortox: ["Ложь"],
 };
 
 export function isTbRole(id: RoleId): boolean {
@@ -471,18 +524,27 @@ export function outsiderShift(roles: RoleId[] = [], godfatherOutsider: 1 | -1 = 
   return shift;
 }
 
+export type Composition = { townsfolk: number; outsider: number; minion: number; demon: number };
+
 export function compositionFor(
   count: number,
   roles: RoleId[] = [],
   godfatherOutsider: 1 | -1 = 1,
-): { townsfolk: number; outsider: number; minion: number; demon: number } | null {
+): Composition | null {
   const base = COMPOSITION[count];
   if (!base) return null;
-  const [townsfolk, outsider, minion, demon] = base;
-  const shift = outsiderShift(roles, godfatherOutsider);
+  const [townsfolk, baseOutsider, minion, demon] = base;
+  let outsider = baseOutsider;
+  if (roles.includes("baron")) outsider += 2;
+  if (roles.includes("godfather")) outsider += godfatherOutsider === -1 ? -1 : 1;
+  if (roles.includes("fanggu")) outsider += 1;
+  // Vigormortis r3015: "if there are no Outsider tokens to remove, do not add
+  // a Townsfolk token". With nothing to remove the shift changes nothing.
+  if (roles.includes("vigormortis") && outsider > 0) outsider -= 1;
+  const shift = outsider - baseOutsider;
   return {
     townsfolk: townsfolk - shift,
-    outsider: outsider + shift,
+    outsider,
     minion,
     demon,
   };
@@ -526,50 +588,64 @@ function teamsIn(pool: RoleId[]): Record<RoleTeam, RoleId[]> {
   return teams;
 }
 
+export type RandomBag = {
+  roles: RoleId[];
+  bluffs: RoleId[];
+  drunkShownId: RoleId | null;
+  lunaticShownId: RoleId | null;
+  godfatherOutsider: 1 | -1;
+};
+
 export function randomBag(
   count: number,
   rng: () => number = Math.random,
   pool: RoleId[] = ALL_ROLES,
   options: { godfatherOutsider?: 1 | -1 } = {},
-): {
-  roles: RoleId[];
-  bluffs: RoleId[];
-  drunkShownId: RoleId | null;
-  lunaticShownId: RoleId | null;
-} {
+): RandomBag {
   const base = COMPOSITION[count];
-  if (!base) throw new Error("Неподдерживаемое число игроков.");
-  const [baseTown, baseOutsider, baseMinion, baseDemon] = base;
+  if (!base) {
+    throw Object.assign(new Error("Неподдерживаемое число игроков."), { code: "count" });
+  }
+  const [, , baseMinion, baseDemon] = base;
   const teams = teamsIn(pool);
 
   if (teams.minion.length < baseMinion || teams.demon.length < baseDemon) {
-    throw new Error("В сценарии не хватает ролей для " + count + " игроков.");
+    throw Object.assign(new Error("В сценарии не хватает ролей для " + count + " игроков."), {
+      code: "composition-impossible",
+    });
   }
   // Pick the Demon before the Outsider count: Fang Gu and Vigormortis change
   // the composition, just like the Baron and the Godfather. Retry candidate
-  // Demons until one produces a legal composition (for example Vigormortis
-  // cannot remove an Outsider at seven players).
+  // Demons until one produces a legal composition through the same
+  // `compositionFor` path the bag validator uses.
   const minions = take(teams.minion, baseMinion, rng);
   let demons: RoleId[] | null = null;
-  let shift = 0;
+  let required: Composition | null = null;
   for (const candidate of shuffle(teams.demon, rng)) {
-    const candidateShift = outsiderShift([...minions, candidate], options.godfatherOutsider);
-    const candidateTown = baseTown - candidateShift;
-    const candidateOutsider = baseOutsider + candidateShift;
+    const candidateRequired = compositionFor(
+      count,
+      [...minions, candidate],
+      options.godfatherOutsider,
+    );
+    if (!candidateRequired) continue;
     if (
-      candidateTown >= 0 &&
-      candidateOutsider >= 0 &&
-      candidateOutsider <= teams.outsider.length &&
-      candidateTown <= teams.townsfolk.length
+      candidateRequired.townsfolk >= 0 &&
+      candidateRequired.outsider >= 0 &&
+      candidateRequired.outsider <= teams.outsider.length &&
+      candidateRequired.townsfolk <= teams.townsfolk.length
     ) {
       demons = [candidate];
-      shift = candidateShift;
+      required = candidateRequired;
       break;
     }
   }
-  if (!demons) throw new Error("В сценарии не хватает ролей для " + count + " игроков.");
-  const townsfolkCount = baseTown - shift;
-  const outsiderCount = baseOutsider + shift;
+  if (!demons || !required) {
+    throw Object.assign(new Error("В сценарии не хватает ролей для " + count + " игроков."), {
+      code: "composition-impossible",
+    });
+  }
+  const townsfolkCount = required.townsfolk;
+  const outsiderCount = required.outsider;
   const outsiders = take(teams.outsider, outsiderCount, rng);
   const townsfolk = take(teams.townsfolk, townsfolkCount, rng);
   const roles: RoleId[] = townsfolk.concat(outsiders, minions, demons);
@@ -588,7 +664,9 @@ export function randomBag(
     const preferred = goodUnused.filter((id) => roleTeam(id) === "townsfolk");
     const bluffPool = preferred.concat(goodUnused.filter((id) => roleTeam(id) === "outsider"));
     if (bluffPool.length < 3) {
-      throw new Error("В сценарии не хватает добрых ролей для блефов Демона.");
+      throw Object.assign(new Error("В сценарии не хватает добрых ролей для блефов Демона."), {
+        code: "composition-impossible",
+      });
     }
     bluffs = take(bluffPool, 3, rng);
   }
@@ -598,11 +676,22 @@ export function randomBag(
     bluffs,
     drunkShownId,
     lunaticShownId: roles.includes("lunatic") ? demons[0]! : null,
+    // The direction only applies while the Godfather is actually in the bag;
+    // the bag screen copies it back so the applied counters match this bag.
+    godfatherOutsider: minions.includes("godfather") && options.godfatherOutsider === -1 ? -1 : 1,
   };
 }
 
 // Validation returns stable codes plus Russian messages. The UI never invents
-// a reason for an illegal bag.
+// a reason for an illegal bag. `vars` carries the interpolation values for the
+// localized `error.<code>` key: a role stays a role id, so the screen maps it
+// through the role catalog instead of trusting the Russian message.
+export type SetupProblem = {
+  code: string;
+  message: string;
+  vars?: Record<string, string | number>;
+};
+
 export function bagErrors({
   count,
   roles = [],
@@ -617,19 +706,21 @@ export function bagErrors({
   roles?: RoleId[];
   bluffs?: RoleId[];
   drunkShownId?: RoleId | null;
-  // A caller that does not model the Lunatic mask omits the field; setup state
-  // always passes it, so a missing mask is rejected there.
+  // Optional for callers that do not model the mask, but a bag that contains
+  // the Lunatic is illegal without a shown Demon, so an omitted field is
+  // treated as a missing mask.
   lunaticShownId?: RoleId | null;
   herringId?: RoleId | null;
   pool?: RoleId[];
   godfatherOutsider?: 1 | -1;
-}): { code: string; message: string }[] {
-  const errors: { code: string; message: string }[] = [];
-  const add = (code: string, message: string) => errors.push({ code, message });
+}): SetupProblem[] {
+  const errors: SetupProblem[] = [];
+  const add = (code: string, message: string, vars?: Record<string, string | number>) =>
+    errors.push(vars ? { code, message, vars } : { code, message });
   const inScript = new Set(pool);
 
   if (!Number.isInteger(count) || count < 5 || count > 15) {
-    add("count", "Число игроков должно быть от 5 до 15.");
+    add("count", "Число игроков должно быть от 5 до 15.", { count });
     return errors;
   }
   if (!Array.isArray(roles)) {
@@ -637,40 +728,60 @@ export function bagErrors({
     return errors;
   }
   if (roles.length !== count) {
-    add("size", `Выбрано ${roles.length} ролей, нужно ${count}.`);
+    add("size", `Выбрано ${roles.length} ролей, нужно ${count}.`, {
+      count: roles.length,
+      required: count,
+    });
   }
   if (new Set(roles).size !== roles.length) {
     add("duplicate", "Одна роль выбрана дважды.");
   }
   for (const id of roles) {
-    if (!isSupportedRole(id)) add("unknown", `Неизвестная роль: ${id}.`);
+    if (!isSupportedRole(id)) add("unknown", `Неизвестная роль: ${id}.`, { role: id });
     else if (!inScript.has(id))
-      add("outside-script", `${roleLabel(id)} не входит в выбранный сценарий.`);
+      add("outside-script", `${roleLabel(id)} не входит в выбранный сценарий.`, { role: id });
   }
 
   const required = compositionFor(count, roles, godfatherOutsider);
   const got = bagCounts(roles);
-  if (
-    required &&
-    roles.includes("godfather") &&
-    godfatherOutsider === -1 &&
-    (COMPOSITION[count] || [0, 0])[1] === 0
-  ) {
-    add(
-      "godfather-minus",
-      "Крёстный Отец не может убрать Изгоя: в базовом составе для " + count + " игроков их нет.",
-    );
-  }
-  if (required && roles.includes("vigormortis") && (COMPOSITION[count] || [0, 0])[1] === 0) {
-    add(
-      "vigormortis-minus",
-      "Вигормортис не может убрать Изгоя: в базовом составе для " + count + " игроков их нет.",
-    );
-  }
   if (required) {
-    for (const team of TEAMS) {
-      if (got[team] !== required[team]) {
-        add("team-" + team, `${teamLabel(team)}: ${got[team]} из ${required[team]}.`);
+    const impossible =
+      required.townsfolk < 0 || required.outsider < 0 || required.minion < 0 || required.demon < 0;
+    // A modifier is blamed only when the composition it is part of is really
+    // impossible: another modifier may already account for the Outsider it
+    // removes (Baron plus Vigormortis, Godfather minus one plus Fang Gu).
+    const baseOutsider = (COMPOSITION[count] || [0, 0])[1];
+    let explained = false;
+    if (impossible && required.outsider < 0 && baseOutsider === 0) {
+      if (roles.includes("godfather") && godfatherOutsider === -1) {
+        add(
+          "godfather-minus",
+          "Крёстный Отец не может убрать Изгоя: в базовом составе для " +
+            count +
+            " игроков их нет.",
+          { count },
+        );
+        explained = true;
+      }
+    }
+    if (impossible && !explained) {
+      add(
+        "composition-impossible",
+        "Модификаторы состава невозможны: в базовом составе для " +
+          count +
+          " игроков не хватает ролей для выбранных сдвигов.",
+        { count },
+      );
+    }
+    if (!impossible) {
+      for (const team of TEAMS) {
+        if (got[team] !== required[team]) {
+          add("team-" + team, `${teamLabel(team)}: ${got[team]} из ${required[team]}.`, {
+            team,
+            count: got[team],
+            required: required[team],
+          });
+        }
       }
     }
   }
@@ -678,36 +789,43 @@ export function bagErrors({
 
   const drunk = roles.includes("drunk");
   if (!drunk && drunkShownId) {
-    add("drunk-unused", "Показанная роль Пьяницы задана, но Пьяницы нет в игре.");
+    add("drunk-unused", "Показанная роль Пьяницы задана, но Пьяницы нет в игре.", {
+      shown: drunkShownId,
+    });
   }
   if (drunk) {
     if (!drunkShownId) {
       add("drunk-shown", "Выберите Горожанина, которого увидит Пьяница.");
     } else if (roleTeam(drunkShownId) !== "townsfolk") {
-      add("drunk-team", "Пьянице можно показать только Горожанина.");
+      add("drunk-team", "Пьянице можно показать только Горожанина.", { shown: drunkShownId });
     } else if (!inScript.has(drunkShownId)) {
-      add("drunk-outside-script", "Показанная Пьянице роль не входит в выбранный сценарий.");
+      add("drunk-outside-script", "Показанная Пьянице роль не входит в выбранный сценарий.", {
+        shown: drunkShownId,
+      });
     } else if (roles.includes(drunkShownId)) {
-      add("drunk-inplay", "Показанная Пьянице роль не должна быть в игре.");
+      add("drunk-inplay", "Показанная Пьянице роль не должна быть в игре.", {
+        shown: drunkShownId,
+      });
     }
   }
 
   // The Lunatic is shown one Demon from the script while the real Demon learns
   // who the Lunatic is. A missing, non-Demon or out-of-script mask cannot be
-  // shown at the table, so the bag is illegal.
-  if (lunaticShownId !== undefined) {
-    if (!roles.includes("lunatic") && lunaticShownId) {
-      add("lunatic-unused", "Показанный Демон Безумца задан, но Безумца нет в игре.");
+  // shown at the table, so the bag with a Lunatic is illegal without one.
+  if (roles.includes("lunatic")) {
+    if (!lunaticShownId) {
+      add("lunatic-shown", "Выберите Демона, которого увидит Безумец.");
+    } else if (roleTeam(lunaticShownId) !== "demon") {
+      add("lunatic-team", "Безумцу можно показать только Демона.", { shown: lunaticShownId });
+    } else if (!inScript.has(lunaticShownId)) {
+      add("lunatic-outside-script", "Показанный Безумцу Демон не входит в выбранный сценарий.", {
+        shown: lunaticShownId,
+      });
     }
-    if (roles.includes("lunatic")) {
-      if (!lunaticShownId) {
-        add("lunatic-shown", "Выберите Демона, которого увидит Безумец.");
-      } else if (roleTeam(lunaticShownId) !== "demon") {
-        add("lunatic-team", "Безумцу можно показать только Демона.");
-      } else if (!inScript.has(lunaticShownId)) {
-        add("lunatic-outside-script", "Показанный Безумцу Демон не входит в выбранный сценарий.");
-      }
-    }
+  } else if (lunaticShownId) {
+    add("lunatic-unused", "Показанный Демон Безумца задан, но Безумца нет в игре.", {
+      shown: lunaticShownId,
+    });
   }
 
   const needed = requiredBluffs(count);
@@ -717,33 +835,38 @@ export function bagErrors({
       needed === 0
         ? "Для 5–6 игроков блефы Демона не выдаются."
         : `Нужно ровно ${needed} блефа, выбрано ${bluffs.length}.`,
+      { needed, count: bluffs.length },
     );
   }
   if (new Set(bluffs).size !== bluffs.length) {
     add("bluffs-duplicate", "Блефы не должны повторяться.");
   }
   for (const id of bluffs) {
-    if (!isGoodRole(id)) add("bluffs-team", `${roleLabel(id)} — не добрая роль.`);
+    if (!isGoodRole(id)) add("bluffs-team", `${roleLabel(id)} — не добрая роль.`, { role: id });
     else if (!inScript.has(id))
-      add("bluffs-outside-script", `${roleLabel(id)} не входит в выбранный сценарий.`);
-    if (roles.includes(id)) add("bluffs-inplay", `${roleLabel(id)} уже в игре.`);
+      add("bluffs-outside-script", `${roleLabel(id)} не входит в выбранный сценарий.`, {
+        role: id,
+      });
+    if (roles.includes(id)) add("bluffs-inplay", `${roleLabel(id)} уже в игре.`, { role: id });
     if (drunk && id === drunkShownId) {
       add(
         "bluffs-drunk",
         `${roleLabel(id)} — маска Пьяницы. Если отдать её Демону как блеф, Демон получит подсказку о Пьянице.`,
+        { role: id },
       );
     }
     if (lunaticShownId && id === lunaticShownId) {
       add(
         "bluffs-lunatic",
         `${roleLabel(id)} — маска Безумца. Если отдать её Демону как блеф, Демон получит подсказку о Безумце.`,
+        { role: id },
       );
     }
   }
   if (herringId) {
     const target = roles.find((id) => id === herringId);
     if (target && !isGoodRole(target)) {
-      add("herring-team", "Ложная цель Гадалки должна быть доброй ролью.");
+      add("herring-team", "Ложная цель Гадалки должна быть доброй ролью.", { role: herringId });
     }
   }
   return errors;

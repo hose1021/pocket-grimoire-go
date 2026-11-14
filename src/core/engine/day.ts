@@ -1,4 +1,4 @@
-import type { DeadAt, GameState, Player, RoleId } from "../model/types.ts";
+import type { DeadAt, GameState, JugglerGuess, Player, RoleId } from "../model/types.ts";
 
 type DayOptions = {
   spyRegistersTownsfolk?: boolean;
@@ -21,12 +21,13 @@ import {
   orderedPlayers,
   playerById,
   realTeamOf,
+  registersAlive,
   seatOf,
 } from "../model/state.ts";
 
-import { executionThreshold, dayAt, addLog } from "./context.ts";
+import { executionThreshold, dayAt, currentAt, addLog } from "./context.ts";
 import { isImpaired, butlerMaster } from "./effects.ts";
-import { buildNightQueue } from "./night.ts";
+import { buildNightQueue, executionDeathForDay } from "./night.ts";
 import {
   MADNESS_PENALTIES,
   activeMadness,
@@ -59,7 +60,10 @@ export function virginTriggers(
   if (nominee.used.virgin) return false;
   if (isImpaired(state, nominee.id, dayAt(state))) return false;
   const realTownsfolk = roleTeam(nominator.roleId || "") === "townsfolk";
-  const spyTownsfolk = nominator.roleId === "spy" && options.spyRegistersTownsfolk === true;
+  const spyTownsfolk =
+    nominator.roleId === "spy" &&
+    options.spyRegistersTownsfolk === true &&
+    !isImpaired(state, nominator.id, dayAt(state));
   return realTownsfolk || spyTownsfolk;
 }
 
@@ -93,7 +97,7 @@ export function nominate(
   const curse = activeWitchCurse(state, nominator);
   const witchDeath = (deathCause: string) => {
     if (!curse) return null;
-    curse.effect.active = false;
+    curse.active = false;
     const death = kill(state, nominator.id, deathCause, dayAt(state), {
       demon: false,
       ability: "witch",
@@ -193,22 +197,20 @@ export function nominate(
   };
 }
 
-// An active Witch curse applies only while more than three players live and the
-// Witch is alive and sober/healthy.
+// A placed Witch curse resolves on the cursed player's next nomination. Losing
+// the ability later does not remove it; the only removal is three living
+// players (Witch r3013).
 function activeWitchCurse(state: GameState, nominator: Player) {
   if (!isSnvScript(state.script) || livingPlayers(state).length <= 3) return null;
-  const effect = state.effects.find(
-    (candidate) =>
-      candidate.kind === "witch" &&
-      candidate.targetId === nominator.id &&
-      candidate.day === state.day.number &&
-      candidate.active,
+  return (
+    state.effects.find(
+      (candidate) =>
+        candidate.kind === "witch" &&
+        candidate.targetId === nominator.id &&
+        candidate.day === state.day.number &&
+        candidate.active,
+    ) || null
   );
-  if (!effect) return null;
-  const witch = effect.sourceId == null ? null : playerById(state, effect.sourceId);
-  if (!witch || !witch.alive) return null;
-  if (isImpaired(state, witch.id, dayAt(state))) return null;
-  return { effect, witch };
 }
 
 // Record this ability at an in-person table without requiring a vote ledger.
@@ -222,6 +224,39 @@ export function recordVirginNomination(
   const virgin = playerById(state, virginId);
   if (!virgin || virgin.roleId !== "virgin" || !virgin.alive || virgin.used.virgin) {
     return { ok: false, errorCode: "error.15", error: "Virgin ability is unavailable." };
+  }
+  const nominator = playerById(state, nominatorId);
+  if (!nominator || !nominator.alive)
+    return { ok: false, errorCode: "error.11", error: "Номинировать может только живой." };
+  // Virgin r1729: the first nomination spends the ability even when it does not
+  // trigger or the Virgin is impaired. When the day already recorded an
+  // execution the vote ledger cannot open, so the table records the first
+  // nomination and the spent ability directly.
+  if (state.day.ended || state.day.execution) {
+    if (virginTriggers(state, virgin, nominator, options)) {
+      return { ok: false, errorCode: "error.23", error: "Сегодня уже была казнь." };
+    }
+    virgin.used.virgin = true;
+    const nomination = {
+      id: "nom-" + state.day.number + "-" + (state.day.nominations.length + 1),
+      nominatorId: nominator.id,
+      nomineeId: virgin.id,
+      at: nowIso(),
+      votes: [],
+      count: 0,
+      threshold: executionThreshold(livingPlayers(state).length),
+      recorded: true,
+      result: "external",
+      butlerWarning: [],
+    };
+    state.day.nominations.push(nomination);
+    addLog(state, {
+      kind: "nomination",
+      title: nominator.name + " номинирует " + virgin.name,
+      detail: "Первый выдвиг Девственницы записан после казни дня.",
+      playerId: virgin.id,
+    });
+    return { ok: true, virgin: false, nomination };
   }
   const wasOpen = state.day.open;
   state.day.open = true;
@@ -400,7 +435,7 @@ export function executePlayer(
 ) {
   const player = playerById(state, playerId);
   if (!player) return null;
-  const livingBefore = livingPlayers(state).length;
+  const livingBefore = livingPlayers(state).filter(registersAlive).length;
   const death = options.survives ? null : kill(state, playerId, "execution", at);
   state.executions.push({
     playerId,
@@ -470,38 +505,69 @@ export function moonchildChoice(state: GameState, targetId: string) {
   return { ok: true, targetId: target.id };
 }
 
-export function jugglerGuess(state: GameState, playerId: string, roleId: string) {
+function jugglerDayGuard(state: GameState) {
   if (state.winner) return { ok: false, errorCode: "error.6", error: "Игра уже окончена." };
   if (state.phase !== "day") return { ok: false, errorCode: "error.7", error: "Сейчас не день." };
-  if (state.day.number !== 1) {
-    return { ok: false, errorCode: "error.7", error: "Жонглёр угадывает в первый день." };
-  }
   const juggler = orderedPlayers(state).find(
     (player) => player.roleId === "juggler" && player.alive,
   );
   if (!juggler) return { ok: false, errorCode: "error.29", error: "Жонглёра нет в игре." };
-  const target = playerById(state, playerId);
-  if (!target) return { ok: false, errorCode: "error.31", error: "Цель не найдена." };
-  const guess = roleId as RoleId;
-  if (!isSupportedRole(guess) || !(state.script && state.script.roles.includes(guess))) {
-    return { ok: false, errorCode: "error.2", error: "Выберите роль из сценария." };
+  const current = state.juggler;
+  if (current && typeof current.day === "number" && current.day !== state.day.number) {
+    return { ok: false, errorCode: "error.7", error: "Жонглёр угадывает в свой первый день." };
   }
-  const guesses =
-    state.juggler && state.juggler.day === 1 && state.juggler.guesses
-      ? { ...state.juggler.guesses }
-      : {};
-  if (!guesses[target.id] && Object.keys(guesses).length >= 5) {
+  return { ok: true as const };
+}
+
+// Juggler r3079: up to five public guesses on their first day; characters and
+// players may repeat, and zero guesses is a legal record.
+export function reportJugglerGuesses(
+  state: GameState,
+  guesses: Array<{ playerId: string; roleId: string }>,
+) {
+  const guard = jugglerDayGuard(state);
+  if (guard.ok === false) return guard;
+  if (!Array.isArray(guesses)) {
+    return { ok: false, errorCode: "error.39", error: "Передайте список догадок Жонглёра." };
+  }
+  if (guesses.length > 5) {
     return { ok: false, errorCode: "error.39", error: "Можно угадать не больше пяти игроков." };
   }
-  guesses[target.id] = guess;
-  state.juggler = { day: 1, guesses };
+  const clean: JugglerGuess[] = [];
+  for (const guess of guesses) {
+    const target = playerById(state, String(guess.playerId));
+    if (!target) return { ok: false, errorCode: "error.31", error: "Цель не найдена." };
+    const roleId = guess.roleId as RoleId;
+    if (!isSupportedRole(roleId) || !(state.script && state.script.roles.includes(roleId))) {
+      return { ok: false, errorCode: "error.2", error: "Выберите роль из сценария." };
+    }
+    clean.push({ playerId: target.id, roleId });
+  }
+  state.juggler = { day: state.day.number, guesses: clean };
   addLog(state, {
     secret: true,
     kind: "ability",
     title: "Жонглёр угадывает",
-    detail: target.name + ": " + roleId + ".",
+    detail: clean.length ? "Записано догадок: " + clean.length + "." : "Догадок нет.",
   });
   return { ok: true, juggler: state.juggler };
+}
+
+export function jugglerGuess(state: GameState, playerId: string, roleId: string) {
+  const guard = jugglerDayGuard(state);
+  if (guard.ok === false) return guard;
+  const target = playerById(state, playerId);
+  if (!target) return { ok: false, errorCode: "error.31", error: "Цель не найдена." };
+  const stored = state.juggler && state.juggler.guesses;
+  const guesses: JugglerGuess[] = Array.isArray(stored)
+    ? stored.map((entry) => ({ playerId: String(entry.playerId), roleId: entry.roleId }))
+    : stored && typeof stored === "object"
+      ? Object.entries(stored).map(([id, role]) => ({ playerId: id, roleId: role }))
+      : [];
+  return reportJugglerGuesses(state, [
+    ...guesses,
+    { playerId: target.id, roleId: roleId as RoleId },
+  ]);
 }
 
 export function gossipStatement(state: GameState, truth: boolean) {
@@ -520,6 +586,41 @@ export function gossipStatement(state: GameState, truth: boolean) {
     detail: "Заявление " + (truth ? "истинно" : "ложно") + ". Ночью ведущий разрешает последствие.",
   });
   return { ok: true, gossip: state.gossip };
+}
+
+// Tinker r1782: "You might die at any time." The Storyteller records a real
+// ability death for a sober Tinker during the day or the night.
+export function tinkerDeath(state: GameState, playerId: string) {
+  if (state.winner) return { ok: false, errorCode: "error.6", error: "Игра уже окончена." };
+  if (state.phase !== "day" && state.phase !== "night") {
+    return { ok: false, errorCode: "error.7", error: "Сейчас не день." };
+  }
+  const player = playerById(state, playerId);
+  if (!player) return { ok: false, errorCode: "error.1", error: "Игрок не найден." };
+  if (!player.alive || player.roleId !== "tinker") {
+    return { ok: false, errorCode: "error.58", error: "Тинкер не в игре или уже мёртв." };
+  }
+  const at = currentAt(state);
+  if (isImpaired(state, player.id, at)) {
+    return {
+      ok: false,
+      errorCode: "error.59",
+      error: "Тинкер отравлен или пьян: способность не работает.",
+    };
+  }
+  const death = kill(state, player.id, "ability", at, { ability: "tinker", bmr: "tinker" });
+  checkWin(state);
+  return { ok: true, death };
+}
+
+// Pacifist r2601: only a living, unimpaired Pacifist can spare an executed good
+// player, and only for an execution the day decides.
+function survivalAllowed(state: GameState, playerId: string, at: DeadAt): boolean {
+  const player = playerById(state, playerId);
+  if (!player || realTeamOf(player) === "evil") return false;
+  return livingPlayers(state).some(
+    (candidate) => candidate.roleId === "pacifist" && !isImpaired(state, candidate.id, at),
+  );
 }
 
 export function execute(state: GameState, nominationId: string, options: DayOptions = {}) {
@@ -541,6 +642,14 @@ export function execute(state: GameState, nominationId: string, options: DayOpti
 
   const nomination = current.nomination;
   const nominee = playerById(state, nomination.nomineeId);
+  const at = dayAt(state);
+  if (options.survives && !survivalAllowed(state, nomination.nomineeId, at)) {
+    return {
+      ok: false,
+      errorCode: "error.57",
+      error: "Выжить при казни может только добрый игрок при живом и здоровом Пацифисте.",
+    };
+  }
   state.day.execution = {
     playerId: nomination.nomineeId,
     cause: "vote",
@@ -551,12 +660,11 @@ export function execute(state: GameState, nominationId: string, options: DayOpti
   state.day.open = false;
   state.day.activeNominationId = null;
 
-  const at = dayAt(state);
   const livingBefore = livingPlayers(state).length;
   const death = executePlayer(state, nomination.nomineeId, "vote", at, options);
-  if (death && nominee && roleTeam(nominee.roleId || "") === "demon") {
-    // executePlayer already resolved inheritance.
-  }
+  // Link the death before the win check: the Mastermind and the Demon-dead
+  // result both read the recorded execution death.
+  state.day.execution.deathId = death ? death.id : null;
   checkWin(state);
   addLog(state, {
     kind: "execution",
@@ -570,27 +678,56 @@ export function execute(state: GameState, nominationId: string, options: DayOpti
 
 export function executeByDecision(state: GameState, playerId: string, options: DayOptions = {}) {
   if (state.winner) return { ok: false, errorCode: "error.6", error: "Игра уже окончена." };
-  if (state.phase !== "day") return { ok: false, errorCode: "error.7", error: "Сейчас не день." };
-  if (state.day.execution)
+  const cause = options.cause || "vote";
+  // A madness execution during the day is the day's execution. Only a madness
+  // execution at night is outside the day's single execution.
+  const nightMadness = state.phase === "night" && cause === "madness";
+  if (state.phase !== "day" && !nightMadness) {
+    return { ok: false, errorCode: "error.7", error: "Сейчас не день." };
+  }
+  if (state.day.execution && !nightMadness) {
     return { ok: false, errorCode: "error.23", error: "Сегодня уже была казнь." };
-  if (state.day.ended) return { ok: false, errorCode: "error.8", error: "День уже завершён." };
+  }
+  if (state.day.ended && !nightMadness) {
+    return { ok: false, errorCode: "error.8", error: "День уже завершён." };
+  }
   const player = playerById(state, playerId);
   if (!player) return { ok: false, errorCode: "error.1", error: "Игрок не найден." };
-  const at = dayAt(state);
-  const cause = options.cause || "vote";
-  state.day.execution = {
-    playerId,
-    cause,
-    at: nowIso(),
-    nominationId: null,
-    deathId: null,
-  };
-  state.day.ended = true;
-  state.day.open = false;
-  state.day.activeNominationId = null;
+  // A dead player cannot be executed, so the day records no execution event.
+  if (!player.alive)
+    return { ok: false, errorCode: "error.55", error: "Нельзя казнить мёртвого игрока." };
+  const at = nightMadness ? currentAt(state) : dayAt(state);
+  if (options.survives && (nightMadness || !survivalAllowed(state, playerId, at))) {
+    return {
+      ok: false,
+      errorCode: "error.57",
+      error: "Выжить при казни может только добрый игрок при живом и здоровом Пацифисте.",
+    };
+  }
+  if (!nightMadness) {
+    state.day.execution = {
+      playerId,
+      cause,
+      at: nowIso(),
+      nominationId: null,
+      deathId: null,
+    };
+    state.day.ended = true;
+    state.day.open = false;
+    state.day.activeNominationId = null;
+  }
   const death = executePlayer(state, playerId, cause, at, options);
-  state.day.execution.deathId = death ? death.id : null;
+  if (!nightMadness && state.day.execution) state.day.execution.deathId = death ? death.id : null;
   checkWin(state);
+  if (
+    !state.winner &&
+    isBmrScript(state.script) &&
+    state.mastermind?.active &&
+    state.mastermind.extraDay
+  ) {
+    const good = realTeamOf(player) !== "evil";
+    setWinner(state, good ? "evil" : "good", "mastermind");
+  }
   addLog(state, {
     kind: "execution",
     title: "Казнь: " + (player.name || "Игрок " + player.seat),
@@ -612,12 +749,15 @@ export function applyMadnessPenalty(
   effectId?: string,
 ) {
   if (state.winner) return { ok: false, errorCode: "error.6", error: "Игра уже окончена." };
-  if (state.phase !== "day") return { ok: false, errorCode: "error.7", error: "Сейчас не день." };
+  if (state.phase !== "day" && state.phase !== "night") {
+    return { ok: false, errorCode: "error.7", error: "Сейчас не день." };
+  }
+  const at = currentAt(state);
   const effect = effectId
-    ? madnessEffects(state).find(
+    ? madnessEffects(state, at).find(
         (candidate) => candidate.id === effectId && candidate.targetId === playerId,
       )
-    : activeMadness(state, playerId);
+    : activeMadness(state, playerId, at);
   if (!effect)
     return { ok: false, errorCode: "error.62", error: "У игрока нет активного безумия." };
   if (!(MADNESS_PENALTIES as readonly string[]).includes(penalty)) {
@@ -632,7 +772,7 @@ export function applyMadnessPenalty(
   const text = String(reason == null ? "" : reason).trim();
   if (!text)
     return { ok: false, errorCode: "error.64", error: "Укажите причину решения ведущего." };
-  const number = dayAt(state).number;
+  const number = state.day.number;
   const canUpgradeReview =
     effect.decidedDay === number && effect.decidedPenalty === "none" && penalty === "execute";
   if (effect.decidedDay === number && !canUpgradeReview) {
@@ -718,11 +858,24 @@ export function endDay(state: GameState) {
     state.day.ended = true;
     state.day.open = false;
     state.day.activeNominationId = null;
-    if (!state.day.execution && !isManualScript(state.script)) {
-      checkWin(state, { endOfDay: true });
-    }
+  }
+  // A day whose execution produced no death is still a day without an
+  // execution event for the Mayor and the Vortox, even when the execution
+  // record already closed the day.
+  if (!executionDeathForDay(state, state.day.number) && !isManualScript(state.script)) {
+    checkWin(state, { endOfDay: true });
   }
   if (state.winner) return { ok: true, winner: state.winner };
+
+  // A Juggler that entered play (dealt or created) without guessing still
+  // answers on the night after their first day, so the day is persisted before
+  // the next night queue is built.
+  if (
+    !state.juggler &&
+    orderedPlayers(state).some((player) => player.alive && player.roleId === "juggler")
+  ) {
+    state.juggler = { day: state.day.number, guesses: [] };
+  }
 
   state.lastDay = {
     number: state.day.number,
@@ -789,7 +942,9 @@ export function useSlayer(
 
   const isDemon =
     roleTeam(target.roleId || "") === "demon" ||
-    (target.roleId === "recluse" && options.recluseRegistersDemon === true);
+    (target.roleId === "recluse" &&
+      options.recluseRegistersDemon === true &&
+      !isImpaired(state, target.id, at));
   if (!isDemon || !target.alive) {
     addLog(state, {
       kind: "ability",
@@ -799,7 +954,7 @@ export function useSlayer(
     return { ok: true, hit: false };
   }
 
-  const livingBefore = livingPlayers(state).length;
+  const livingBefore = livingPlayers(state).filter(registersAlive).length;
   const death = kill(state, target.id, "slayer", at);
   let inheritance = null;
   if (death && roleTeam(target.roleId || "") === "demon") {

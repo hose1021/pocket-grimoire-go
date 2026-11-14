@@ -1,78 +1,394 @@
-// Console overlays. The information card and the grimoire are full-screen
-// privacy surfaces; the role card, correction and the two backup dialogs use
-// the shared Radix dialog for the focus trap and Escape handling.
+// Console overlays. The information and role cards are full-screen privacy
+// surfaces; the roster, the table menu, the role reference card, the day help,
+// the correction and the two backup dialogs use the shared Radix dialog for the
+// focus trap and Escape handling.
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { stepProjection } from "../../../application/read-models/table.ts";
-import { livingPlayers, orderedPlayers, playerById } from "../../../core/model/state.ts";
+import {
+  seatProjection,
+  stepProjection,
+  tableProjection,
+} from "../../../application/read-models/table.ts";
+import { orderedPlayers, playerById } from "../../../core/model/state.ts";
 import { ALL_ROLES, roleTeam } from "../../../core/model/rules.ts";
 import { Dialog, DialogClose } from "../../components/dialog.tsx";
-import { defaultCorrectionValue, displayName, infoText, roleNameOf, stepTitle } from "./helpers.ts";
+import {
+  blockerText,
+  defaultCorrectionValue,
+  displayName,
+  guideForStep,
+  previewIdentity,
+  roleNameOf,
+  shownCardText,
+  stepTitle,
+} from "./helpers.ts";
 import { EffectBadges, PanelHead, RoleToken } from "./parts.tsx";
+import { DayActionsPanel, DayCard, NightCard, SlayerPanel } from "./cards.tsx";
+import { DayPanel, SidePanel } from "./frame.tsx";
+import { stepContext } from "./step-context.ts";
+import { writeStepDraft } from "./step-draft.ts";
+import { seatBadges, SEAT_BADGE_KEY } from "./ring.ts";
 import type { TableView } from "./view.ts";
-import { CHIPS, FIELD_BOX, GRIMOIRE, INLINE, MUTED, OVERLAY, WARNING } from "./styles.ts";
+import { CHIPS, FIELD_BOX, GRIMOIRE, INLINE, MUTED, WARNING } from "./styles.ts";
 
 const HIDDEN_TRIGGER = <button className="hidden" type="button" tabIndex={-1} aria-hidden="true" />;
 
 export function Overlays({ view }: { view: TableView }) {
-  const overlay = view.drafts.overlay;
-  if (overlay === "info") return <InfoOverlay view={view} />;
-  if (overlay === "grimoire") return <GrimoireOverlay view={view} />;
-  if (overlay === "role") return <RoleCardDialog view={view} />;
-  if (overlay === "correction") return <CorrectionDialog view={view} />;
-  if (overlay === "export") return <ExportDialog view={view} />;
-  if (overlay === "import") return <ImportDialog view={view} />;
-  return null;
+  switch (view.drafts.overlay) {
+    case "info":
+      return <PlayerInfoCard view={view} />;
+    case "player":
+      return <PlayerRoleCard view={view} />;
+    case "playerSheet":
+      return <PlayerSheet view={view} />;
+    case "step":
+      return <StepSheet view={view} />;
+    case "grimoire":
+      return <GrimoireOverlay view={view} />;
+    case "role":
+      return <RoleCardDialog view={view} />;
+    case "roster":
+      return <RosterDialog view={view} />;
+    case "menu":
+      return <MenuDialog view={view} />;
+    case "day":
+      return (
+        <ShellDialog
+          open
+          onClose={view.actions.closeOverlay}
+          title={view.ports.strings.t("ui.dayHelp")}
+          closeLabel={view.ports.strings.t("close")}
+        >
+          <DayCard view={view} roleFormsOnly />
+        </ShellDialog>
+      );
+    case "correction":
+      return <CorrectionDialog view={view} />;
+    case "export":
+      return <ExportDialog view={view} />;
+    case "import":
+      return <ImportDialog view={view} />;
+    default:
+      return null;
+  }
 }
 
-function InfoOverlay({ view }: { view: TableView }) {
+function PlayerCardShell({
+  label,
+  children,
+  closeLabel,
+  onClose,
+}: {
+  label: string;
+  children: ReactNode;
+  closeLabel: string;
+  onClose(): void;
+}) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+  return (
+    <div
+      className="fixed inset-0 z-[200] grid min-h-dvh place-items-center overflow-y-auto bg-crypt p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      data-player-card
+    >
+      <div className="grid w-[min(400px,100%)] justify-items-center gap-3 rounded-lg bg-card-parchment p-6 text-center text-card-ink shadow-deep">
+        {children}
+      </div>
+      <button
+        ref={closeRef}
+        className="btn min-h-11 min-w-[180px] !justify-center border-edge-2 bg-crypt-2 text-parchment"
+        type="button"
+        data-act="hide-card"
+        onClick={onClose}
+      >
+        {closeLabel}
+      </button>
+    </div>
+  );
+}
+
+function PlayerInfoCard({ view }: { view: TableView }) {
   const { state, drafts, ports, actions } = view;
   const t = ports.strings.t;
   const step = state.night.queue.find((candidate) => candidate.key === drafts.infoKey);
   if (!step) return null;
   const draftKey = `${state.createdAt}:${state.night.number}:${step.key}`;
-  const info = stepProjection(state, step, {
+  const derived = stepProjection(state, step, {
     targetIds: drafts.targets.get(draftKey) || [],
     registrations: drafts.registrations.get(draftKey) || {},
-  }).info;
-  const shown = drafts.givens.get(draftKey) || info;
-  const bluffs = shown.bluffs || state.bluffs || [];
-  const minions = livingPlayers(state)
-    .filter((player) => roleTeam(player.roleId || "") === "minion")
-    .map((player) => displayName(player, t));
-  return (
-    <div className={OVERLAY} role="dialog" aria-modal="true" aria-label={t("showCard")}>
-      <div className="w-[min(560px,100%)] rounded-md border border-amber-dim bg-amber-dim/40 p-[22px] text-center">
-        <p className="label">
-          {t("night")} {state.night.number} · {stepTitle(step, ports.roles.byId, t)}
-        </p>
-        {shown.kind === "demon-info" ? (
-          <div className="my-1.5 text-left">
-            <span className="label">{t("ui.minions")}</span>
-            <p className="my-1 text-[14px] leading-[1.4]">{minions.join(", ") || "—"}</p>
-            <span className="label">{t("ui.bluffs")}</span>
-            <div className="mt-2 flex flex-wrap justify-center gap-2">
-              {bluffs.length ? (
-                bluffs.map((id) => <RoleToken key={id} id={id} ports={ports} />)
-              ) : (
-                <p className={MUTED}>{t("ui.noBluffs")}</p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="my-3 text-[clamp(18px,3vw,24px)] leading-[1.45]">
-            {infoText(state, step, shown, ports.roles.byId, t)}
+  });
+  const shown = drafts.givens.get(draftKey) || derived.info;
+  const actor = step.actorId ? playerById(state, step.actorId) : null;
+  const roleId = actor ? actor.shownRoleId || actor.roleId : step.roleId;
+  const role = roleId ? ports.roles.byId(roleId) : null;
+  const generic = step.system === "minioninfo" || step.system === "demoninfo" ? step.system : null;
+  const text = shownCardText(
+    state,
+    step,
+    shown,
+    drafts.givens.get(draftKey),
+    drafts.infoTemplate,
+    derived.actorImpaired,
+    ports.roles.byId,
+    t,
+  );
+  if (generic) {
+    const players = orderedPlayers(state);
+    const roleOf = (id: string | null) => (id ? ports.roles.byId(id) : null);
+    const actorIds = Array.isArray(step.actorIds) ? (step.actorIds as string[]) : [];
+    const minions =
+      generic === "minioninfo" && actorIds.length
+        ? actorIds
+            .map((id) => playerById(state, id))
+            .filter((player): player is NonNullable<typeof player> => Boolean(player))
+        : players.filter((player) => roleTeam(player.roleId || "") === "minion");
+    const demon =
+      (step.demonId ? playerById(state, step.demonId) : null) ??
+      players.find((player) => roleTeam(player.roleId || "") === "demon");
+    const demonRole = demon ? roleOf(demon.roleId) : null;
+    const bluffIds = step.bluffs && step.bluffs.length ? step.bluffs : state.setup.bluffs || [];
+    const bluffRoles = bluffIds
+      .map((id) => roleOf(id))
+      .filter((bluff): bluff is NonNullable<typeof bluff> => Boolean(bluff));
+    const title = t(generic === "demoninfo" ? "demonInfo" : "minionInfo");
+    return (
+      <PlayerCardShell label={title} closeLabel={t("hideCard")} onClose={actions.closeInfo}>
+        {generic === "demoninfo" && demonRole ? (
+          <img className="size-20 object-contain" src={ports.roles.image(demonRole)} alt="" />
+        ) : null}
+        <span className="text-[8px] font-semibold uppercase tracking-[.2em] text-ink-2">
+          {t("night")} {state.night.number}
+        </span>
+        <h2 data-player-card-role className="m-0 font-role text-[30px] leading-tight text-card-ink">
+          {title}
+        </h2>
+        {generic === "demoninfo" && demon && demonRole ? (
+          <p className="m-0 text-[15px] text-ink-2">
+            {displayName(demon, t)} · {demonRole.name}
           </p>
-        )}
-        <button
-          className="btn btn--accent mt-2"
-          type="button"
-          data-act="hide-info"
-          onClick={actions.closeOverlay}
+        ) : null}
+        {generic === "minioninfo" && demon ? (
+          <p className="m-0 text-[15px] text-ink-2" data-info-demon>
+            {t("demonInfo")}: {displayName(demon, t)}
+          </p>
+        ) : null}
+        <div className="grid w-full gap-3 text-left">
+          <div className="grid gap-1.5">
+            <span className="label">{t("minionInfo")}</span>
+            <ul className="m-0 grid list-none gap-2 p-0" data-info-minions>
+              {minions.map((player) => (
+                <li
+                  key={player.id}
+                  className="flex items-baseline gap-2.5 border-t border-card-ink/10 pt-2 first:border-t-0 first:pt-0"
+                >
+                  <span className="w-5 shrink-0 text-[11px] tabular-nums text-ink-2">
+                    {player.seat}
+                  </span>
+                  <b className="text-[16px] font-semibold">{displayName(player, t)}</b>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {generic === "demoninfo" && bluffRoles.length ? (
+            <div className="grid gap-1.5">
+              <span className="label">{t("bluffs")}</span>
+              <div className="flex flex-wrap gap-2" data-info-bluffs>
+                {bluffRoles.map((bluff) => (
+                  <span
+                    key={bluff.id}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-card-ink/15 bg-card-parchment px-3 py-1.5 text-[13px] text-card-ink"
+                  >
+                    <img className="size-4 object-contain" src={ports.roles.image(bluff)} alt="" />
+                    {bluff.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </PlayerCardShell>
+    );
+  }
+  return (
+    <PlayerCardShell label={t("showCard")} closeLabel={t("hideCard")} onClose={actions.closeInfo}>
+      {role ? (
+        <img className="size-24 object-contain" src={ports.roles.image(role)} alt="" />
+      ) : null}
+      <span className="text-[8px] font-semibold uppercase tracking-[.2em] text-ink-2">
+        {t("night")} {state.night.number}
+        {role ? ` · ${role.name}` : ""}
+      </span>
+      <h2 data-player-card-role className="m-0 font-role text-[26px] leading-tight text-card-ink">
+        {role ? role.name : stepTitle(step, ports.roles.byId, t)}
+      </h2>
+      <p data-player-card-text className="m-0 text-[16px] leading-[1.45] text-card-ink">
+        {text}
+      </p>
+    </PlayerCardShell>
+  );
+}
+
+function StepSheet({ view }: { view: TableView }) {
+  const { state, drafts, ports, actions } = view;
+  const t = ports.strings.t;
+  const step = tableProjection(state).step;
+  if (!step) return null;
+  const context = stepContext(state, drafts, step);
+  const guide = guideForStep(t, ports.guidance.for, state, step);
+  const preview = actions.preview({ type: "completeNightStep", payload: context.payload });
+  return (
+    <ShellDialog
+      open
+      onClose={actions.closeOverlay}
+      title={stepTitle(step, ports.roles.byId, t)}
+      description={guide.host || ""}
+      closeLabel={t("close")}
+    >
+      <NightCard view={view} />
+      {context.blockers.length ? (
+        <ul
+          className="mt-3 grid list-none gap-1 p-0 text-[11px] leading-tight text-amber-2"
+          data-step-blockers
         >
-          {t("hideCard")}
+          {context.blockers.map((blocker) => (
+            <li key={blocker} data-blocker-reason={blocker}>
+              {blockerText(blocker, context.minTargets, t)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          className="btn min-h-11 !justify-center"
+          type="button"
+          data-act="step-skip"
+          onClick={() => {
+            actions.run({ type: "skipStep", payload: { key: step.key } });
+            actions.closeOverlay();
+          }}
+        >
+          {t("skipWake")}
+        </button>
+        <button
+          className="btn min-h-11 !justify-center border-table-primary bg-table-primary text-table-primary-ink !bg-none font-semibold disabled:!border-edge-2 disabled:!bg-transparent disabled:!text-muted disabled:!opacity-100"
+          type="button"
+          data-act="step-confirm"
+          disabled={context.blockers.length > 0}
+          onClick={() => {
+            const result = actions.run({
+              type: "completeNightStep",
+              payload: context.payload,
+              ...previewIdentity(preview),
+            });
+            if (result.status === "allowed") {
+              drafts.clearStep(context.draftKey);
+              writeStepDraft(ports.prefs.write, null);
+              actions.closeOverlay();
+            }
+          }}
+        >
+          {t("ui.confirm")}
         </button>
       </div>
-    </div>
+    </ShellDialog>
+  );
+}
+
+function PlayerSheet({ view }: { view: TableView }) {
+  const { state, drafts, ports, actions } = view;
+  const t = ports.strings.t;
+  const player = drafts.playerCardId ? playerById(state, drafts.playerCardId) : null;
+  if (!player) return null;
+  const role = player.roleId ? ports.roles.byId(player.roleId) : null;
+  return (
+    <ShellDialog
+      open
+      onClose={actions.closeOverlay}
+      title={displayName(player, t)}
+      description={role ? `${role.name} · ${ports.strings.teamText(role.team)}` : t("ui.unknown")}
+      closeLabel={t("close")}
+    >
+      <div className="grid gap-3" data-player-sheet>
+        <div className="grid grid-cols-[56px_minmax(0,1fr)] items-center gap-3">
+          {role ? (
+            <img className="size-14 object-contain" src={ports.roles.image(role)} alt="" />
+          ) : null}
+          <div>
+            <p className="m-0 text-[12px] text-muted">
+              {t("seat")} {player.seat} · {player.alive ? t("ui.alive") : t("ui.dead")}
+            </p>
+            <b className="block font-role text-[18px] text-parchment">
+              {role ? role.name : t("ui.unknown")}
+            </b>
+          </div>
+        </div>
+        {role?.ability ? (
+          <p className="m-0 text-[12px] leading-[1.5] text-muted">{role.ability}</p>
+        ) : null}
+        {player.roleId === "slayer" && player.alive && !player.used.slayer ? (
+          <SlayerPanel view={view} slayerId={player.id} />
+        ) : null}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="btn"
+            type="button"
+            data-act="player-correct"
+            onClick={() => actions.openCorrection(player.id)}
+          >
+            {t("correction")}
+          </button>
+          <button
+            className="btn"
+            type="button"
+            data-act="player-card"
+            onClick={() => drafts.setOverlay("player")}
+          >
+            {t("showCard")}
+          </button>
+        </div>
+        <button
+          className="btn"
+          type="button"
+          data-act="player-role"
+          disabled={!player.roleId}
+          onClick={() => player.roleId && actions.openRole(player.roleId)}
+        >
+          {t("roleCard")}
+        </button>
+      </div>
+    </ShellDialog>
+  );
+}
+
+function PlayerRoleCard({ view }: { view: TableView }) {
+  const { state, drafts, ports, actions } = view;
+  const t = ports.strings.t;
+  const player = drafts.playerCardId ? playerById(state, drafts.playerCardId) : null;
+  const roleId = player ? player.shownRoleId || player.roleId : null;
+  const role = roleId ? ports.roles.byId(roleId) : null;
+  if (!player || !role) return null;
+  return (
+    <PlayerCardShell
+      label={t("roleCard")}
+      closeLabel={t("hideCard")}
+      onClose={actions.closeOverlay}
+    >
+      <img className="size-24 object-contain" src={ports.roles.image(role)} alt="" />
+      <span className="text-[8px] font-semibold uppercase tracking-[.2em] text-ink-2">
+        {displayName(player, t)} · {ports.strings.teamText(role.team)}
+      </span>
+      <h2 data-player-card-role className="m-0 font-role text-[26px] leading-tight text-card-ink">
+        {role.name}
+      </h2>
+      <p data-player-card-text className="m-0 text-[14px] leading-[1.5] text-card-ink">
+        {role.ability || ""}
+      </p>
+    </PlayerCardShell>
   );
 }
 
@@ -147,6 +463,99 @@ function RoleCardDialog({ view }: { view: TableView }) {
             <p className="text-[13px] leading-[1.5] text-muted">{role.flavor}</p>
           ) : null}
         </div>
+      </div>
+    </ShellDialog>
+  );
+}
+
+function RosterDialog({ view }: { view: TableView }) {
+  const { state, drafts, ports, actions } = view;
+  const t = ports.strings.t;
+  const projection = tableProjection(state);
+  const nomination =
+    state.day.nominations.find((entry) => entry.id === state.day.activeNominationId) ??
+    state.day.nominations[state.day.nominations.length - 1];
+  return (
+    <ShellDialog
+      open
+      onClose={actions.closeOverlay}
+      title={t("roster")}
+      description={t("rosterHint")}
+      closeLabel={t("close")}
+    >
+      <ol className="grid max-h-[62dvh] list-none gap-1 overflow-y-auto p-0" data-roster>
+        {orderedPlayers(state).map((player) => {
+          const seat = seatProjection(state, player.id);
+          const role = player.roleId ? ports.roles.byId(player.roleId) : null;
+          const badges = seatBadges({
+            alive: player.alive,
+            voteToken: player.voteToken,
+            acting: projection.step?.actorId === player.id,
+            nominated: nomination?.nomineeId === player.id,
+            impaired: seat.impaired && player.roleId !== "drunk",
+            drunk: seat.drunk && player.roleId !== "drunk",
+            poisoned: seat.poisoned && player.roleId !== "drunk",
+            protected: seat.protected,
+          });
+          return (
+            <li
+              key={player.id}
+              data-roster-player={player.id}
+              className="flex items-center gap-2 rounded-sm border border-edge bg-crypt-3 p-2"
+            >
+              <span
+                data-seat-number=""
+                className="w-6 shrink-0 text-[11px] tabular-nums text-muted"
+              >
+                {player.seat}
+              </span>
+              <span className="min-w-0 flex-1">
+                <b className="block truncate text-[13px]">{displayName(player, t)}</b>
+                <small className="block truncate text-[10.5px] text-muted">
+                  {role ? role.name : t("ui.unknown")}
+                  {role ? ` · ${ports.strings.teamText(role.team)}` : ""}
+                </small>
+                {badges.length ? (
+                  <span className="flex flex-wrap gap-1 pt-0.5">
+                    {badges.map((badge) => (
+                      <span
+                        key={badge}
+                        className="rounded-full border border-edge-2 px-1 py-px text-[8px] uppercase tracking-[.06em] text-muted"
+                      >
+                        {t(SEAT_BADGE_KEY[badge])}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
+              </span>
+              <button
+                className="btn min-h-11 shrink-0 !justify-center"
+                type="button"
+                data-act="role-card"
+                onClick={() => {
+                  drafts.setPlayerCardId(player.id);
+                  drafts.setOverlay("playerSheet");
+                }}
+              >
+                {t("roleCard")}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </ShellDialog>
+  );
+}
+
+function MenuDialog({ view }: { view: TableView }) {
+  const { ports, actions } = view;
+  const t = ports.strings.t;
+  return (
+    <ShellDialog open onClose={actions.closeOverlay} title={t("tableMenu")} closeLabel={t("close")}>
+      <div className="grid max-h-[68dvh] gap-2 overflow-y-auto" data-menu>
+        <SidePanel view={view} />
+        <DayPanel view={view} />
+        <DayActionsPanel view={view} />
       </div>
     </ShellDialog>
   );

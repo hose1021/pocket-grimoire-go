@@ -253,6 +253,11 @@ export function livingPlayers(state: GameState): Player[] {
   return orderedPlayers(state).filter((p) => p.alive);
 }
 
+/** A player another ability sees as alive; a registered-dead Zombuul is not. */
+export function registersAlive(player: Player | null | undefined): boolean {
+  return Boolean(player && player.alive && !player.registeredDead);
+}
+
 export function livingIds(state: GameState): string[] {
   return livingPlayers(state).map((p) => p.id);
 }
@@ -301,7 +306,13 @@ export function publicGameView(state: GameState) {
   const registered = orderedPlayers(state)
     .filter((player) => player.registeredDead)
     .map((player) => player.id);
-  const deathNames = [...new Set([...announced, ...registered])]
+  // An execution is public: the town saw it, so the public page names the
+  // player once the death is real (a prevented execution kills nobody).
+  const execution =
+    state.day && state.day.execution && state.day.execution.deathId
+      ? [state.day.execution.playerId]
+      : [];
+  const deathNames = [...new Set([...announced, ...execution, ...registered])]
     .map((id) => seatName(state, id))
     .filter(Boolean);
   return {
@@ -597,7 +608,14 @@ export function validateState(value: unknown): string[] {
   check(value.juggler == null || juggler !== null, "Invalid Juggler state.");
   if (juggler) {
     check(typeof juggler.day === "number", "Invalid Juggler day.");
-    check(object(juggler.guesses), "Invalid Juggler guesses.");
+    const guesses = juggler.guesses;
+    const valid = Array.isArray(guesses)
+      ? guesses.every(
+          (entry) =>
+            object(entry) && typeof entry.playerId === "string" && typeof entry.roleId === "string",
+        )
+      : object(guesses);
+    check(valid, "Invalid Juggler guesses.");
   }
   const lastDay = object(value.lastDay) ? value.lastDay : null;
   check(value.lastDay == null || lastDay !== null, "Invalid last-day state.");
@@ -642,7 +660,11 @@ export function validateState(value: unknown): string[] {
       }
     check(setup.herringId == null || ref(setup.herringId), "Invalid red herring.");
     check(setup.drunkShownId == null || inScript(setup.drunkShownId), "Invalid Drunk mask.");
-    check(setup.lunaticShownId == null || inScript(setup.lunaticShownId), "Invalid Lunatic mask.");
+    check(
+      !(Array.isArray(setup.roles) && setup.roles.includes("lunatic")) ||
+        (setup.lunaticShownId != null && inScript(setup.lunaticShownId)),
+      "Invalid Lunatic mask.",
+    );
     check(
       setup.godfatherOutsider == null ||
         (isInt(setup.godfatherOutsider) && [1, -1].includes(setup.godfatherOutsider)),

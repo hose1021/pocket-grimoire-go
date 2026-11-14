@@ -74,6 +74,7 @@ import {
   nowIso,
   orderedPlayers,
   playerById,
+  registersAlive,
   seatName,
 } from "../model/state.ts";
 
@@ -153,6 +154,18 @@ export function infoKindFor(roleId: RoleId | null): string {
       spy: "grimoire",
     }[roleId || ""] || "none"
   );
+}
+
+/** Sets the console key and the persisted fallback for one step note. */
+export function setStepNote(
+  step: NightStep,
+  key: string,
+  vars: Record<string, string | number> | null,
+  fallback: string,
+): void {
+  step.noteKey = key;
+  step.noteVars = vars;
+  step.note = fallback;
 }
 
 export function makeRoleStep(
@@ -333,7 +346,7 @@ export function pruneDeadSteps(state: GameState) {
     if (minionRetainsAbility(state, actor.id)) continue;
     step.done = true;
     step.skipped = true;
-    step.note = "Игрок погиб до своего шага.";
+    setStepNote(step, "note.actorDied", null, "Игрок погиб до своего шага.");
     addLog(state, {
       secret: true,
       kind: "night",
@@ -385,6 +398,7 @@ export function appendConditionalSteps(state: GameState) {
       state,
       makeSystemStep(state, order, "demonchange", {
         note: "Демон сменился. Разбудите нового Демона и покажите жетон Чёрта. Новый Демон не действует этой ночью повторно.",
+        noteKey: "note.demonChanged",
       }),
     );
   }
@@ -393,6 +407,9 @@ export function appendConditionalSteps(state: GameState) {
 
 export function startNight(state: GameState) {
   if (state.winner) return { ok: false, errorCode: "error.6", error: "Игра уже окончена." };
+  // A stale tab must not turn an active day back into a night.
+  if (state.phase === "day")
+    return { ok: false, errorCode: "error.68", error: "Сейчас день: сначала завершите день." };
   if (state.phase === "night" && state.night.queue.length) {
     return { ok: true, queue: state.night.queue, resumed: true };
   }
@@ -406,7 +423,7 @@ export function startNight(state: GameState) {
 
   if (state.phase !== "deal" && state.phase !== "seat" && state.phase !== "night") {
     // Night can restart after a reload; only block clearly wrong phases.
-    if (state.phase !== "day") state.phase = "deal";
+    state.phase = "deal";
   }
   if (!state.night.number || state.night.number < 1) state.night.number = 1;
   state.phase = "night";
@@ -464,7 +481,7 @@ export function completeStep(state: GameState, key: string, options: NightOption
   ) {
     step.done = true;
     step.skipped = true;
-    step.note = "Игрок погиб до своего шага.";
+    setStepNote(step, "note.actorDied", null, "Игрок погиб до своего шага.");
     return { ok: false, errorCode: "error.38", error: "Игрок погиб до своего шага." };
   }
 
@@ -502,6 +519,25 @@ export function completeStep(state: GameState, key: string, options: NightOption
   for (const id of targets) {
     if (!playerById(state, id))
       return { ok: false, errorCode: "error.31", error: "Цель не найдена." };
+  }
+  // Bad Moon Rising target text: Sailor r1768 and Devil's Advocate r2594 choose
+  // an alive/living player, Chambermaid r2966 chooses 2 alive players (not
+  // themself). A registered-dead Zombuul counts as dead for the ability.
+  const registeredLiving = (id: string): boolean => registersAlive(playerById(state, id));
+  if (
+    step.bmr &&
+    (step.roleId === "sailor" || step.roleId === "devilsadvocate") &&
+    targets.some((id) => !registeredLiving(id))
+  ) {
+    return { ok: false, errorCode: "error.55", error: "Нельзя выбрать мёртвого игрока." };
+  }
+  if (step.bmr && step.roleId === "chambermaid") {
+    if (step.actorId != null && targets.includes(step.actorId)) {
+      return { ok: false, errorCode: "error.40", error: "Нельзя выбрать себя." };
+    }
+    if (targets.some((id) => !registeredLiving(id))) {
+      return { ok: false, errorCode: "error.55", error: "Нельзя выбрать мёртвого игрока." };
+    }
   }
   if (step.previousTarget && targets.includes(step.previousTarget)) {
     return {
@@ -567,7 +603,12 @@ export function completeStep(state: GameState, key: string, options: NightOption
 
   if (role === "poisoner") {
     if (isImpaired(state, actor.id, at)) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
     } else {
       state.effects.forEach((effect) => {
         if (effect.kind === "poison" && effect.sourceId === actor.id) effect.active = false;
@@ -581,14 +622,24 @@ export function completeStep(state: GameState, key: string, options: NightOption
         expires: { phase: "night", number: at.number + 1 },
         active: true,
       });
-      step.note = "Отравлен: " + seatName(state, targets[0]!) + ".";
+      setStepNote(
+        step,
+        "note.poisoned",
+        { name: seatName(state, targets[0]!) },
+        "Отравлен: " + seatName(state, targets[0]!) + ".",
+      );
     }
     return finishStep(state, step, options, targets, at);
   }
 
   if (role === "monk") {
     if (isImpaired(state, actor.id, at)) {
-      step.note = "Способность не сработала: игрок отравлен или пьян.";
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
     } else {
       state.effects.forEach((effect) => {
         if (effect.kind === "protected" && effect.sourceId === actor.id) effect.active = false;
@@ -602,7 +653,12 @@ export function completeStep(state: GameState, key: string, options: NightOption
         expires: { phase: "day", number: at.number },
         active: true,
       });
-      step.note = "Защищён этой ночью: " + seatName(state, targets[0]!) + ".";
+      setStepNote(
+        step,
+        "note.protected",
+        { name: seatName(state, targets[0]!) },
+        "Защищён этой ночью: " + seatName(state, targets[0]!) + ".",
+      );
     }
     return finishStep(state, step, options, targets, at);
   }
@@ -619,9 +675,21 @@ export function completeStep(state: GameState, key: string, options: NightOption
       expires: { phase: "night", number: at.number + 1 },
       active: !impaired,
     });
-    step.note = impaired
-      ? "Способность не сработала: игрок отравлен или пьян."
-      : "Завтра голосует только вместе с: " + seatName(state, targets[0]!) + ".";
+    if (impaired) {
+      setStepNote(
+        step,
+        "note.abilityFailed",
+        null,
+        "Способность не сработала: игрок отравлен или пьян.",
+      );
+    } else {
+      setStepNote(
+        step,
+        "note.butlerMaster",
+        { name: seatName(state, targets[0]!) },
+        "Завтра голосует только вместе с: " + seatName(state, targets[0]!) + ".",
+      );
+    }
     return finishStep(state, step, options, targets, at);
   }
 
@@ -642,9 +710,26 @@ export function completeStep(state: GameState, key: string, options: NightOption
       };
     }
     step.result = attack;
-    step.note = attack.noDeath
-      ? attack.reason || ""
-      : "Погиб: " + seatName(state, attack.deathId || "") + ".";
+    // The redirect is a Storyteller decision: it belongs in the secret journal
+    // even though this branch completes the step itself.
+    if (options.redirectId) {
+      recordHostChoice(
+        state,
+        "mayor-redirect",
+        seatName(state, String(options.redirectId)),
+        actor.id,
+      );
+    }
+    if (attack.noDeath) {
+      step.note = attack.reason || "";
+    } else {
+      setStepNote(
+        step,
+        "note.impKilled",
+        { name: seatName(state, attack.deathId || "") },
+        "Погиб: " + seatName(state, attack.deathId || "") + ".",
+      );
+    }
     step.done = true;
     step.completedAt = nowIso();
     step.given = null;
@@ -740,13 +825,22 @@ export function finishStep(
   step.impaired = step.actorId ? isImpaired(state, step.actorId, at) : false;
   step.done = true;
   step.completedAt = nowIso();
-  if (!step.note) step.note = "Шаг выполнен.";
-  addLog(state, {
+  if (!step.note) setStepNote(step, "note.finished", null, "Шаг выполнен.");
+  const line = addLog(state, {
     secret: true,
     kind: "night",
     title: (step.roleId ? roleLabel(step.roleId) : step.system) || "Ночной шаг",
-    detail: step.note,
+    detail: step.note ?? "",
   });
+  // The console renders the localized note, role and phase instead of the
+  // Russian detail, title and prefix.
+  if (step.roleId) line.roleId = step.roleId;
+  line.phaseCode = "night";
+  line.phaseNumber = nightAt(state).number;
+  if (step.noteKey) {
+    line.noteKey = step.noteKey;
+    line.noteVars = step.noteVars ?? null;
+  }
   appendConditionalSteps(state);
   checkWin(state);
   return { ok: true, step };
@@ -833,7 +927,11 @@ export function skipStep(state: GameState, key: string, reason: string = "") {
   const note = String(reason || "").trim();
   step.skipped = true;
   step.done = true;
-  step.note = note ? "Пропущено: " + note : "Пропущено";
+  if (note) {
+    setStepNote(step, "note.skipped", { reason: note }, "Пропущено: " + note);
+  } else {
+    setStepNote(step, "note.skippedNone", null, "Пропущено");
+  }
   addLog(state, {
     secret: true,
     kind: "night",

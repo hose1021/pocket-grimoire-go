@@ -26,6 +26,7 @@ import {
   mayorRedirectNeeded,
   madnessReviewProjection,
   progressProjection,
+  resurrectChoices,
   seatProjection,
   setupProjection,
   secretsProjection,
@@ -307,6 +308,33 @@ test("a seat projection reports a poisoned chef, a soldier and a butler master",
   assert.equal(seatProjection(game, "2").safeFromAttack, true);
 });
 
+test("a seat projection exposes a scheduled death, a registered death and an effect source", () => {
+  const game = scene();
+  game.effects.push({
+    id: "pending-death",
+    kind: "pukka-death",
+    sourceId: "1",
+    targetId: "2",
+    start: { phase: "night", number: 1 },
+    expires: null,
+    active: true,
+  });
+  game.effects.push({
+    id: "drunk-source",
+    kind: "drunk",
+    sourceId: "1",
+    targetId: "3",
+    start: { phase: "night", number: 1 },
+    expires: null,
+    active: true,
+  });
+  game.players["4"]!.registeredDead = true;
+  assert.equal(seatProjection(game, "2").scheduledDeath, true);
+  assert.equal(seatProjection(game, "3").drunk, true);
+  assert.equal(seatProjection(game, "3").drunkSourceRoleId, "mayor");
+  assert.equal(seatProjection(game, "4").registeredDead, true);
+});
+
 test("the setup and secrets projections report a broken bag", () => {
   const game = scene();
   assert.deepEqual(setupProjection(game).errors, setupErrors(game));
@@ -358,6 +386,37 @@ test("the dispatch preview issues a fresh id without touching the state", () => 
   const secondId = second.status === "allowed" ? second.id : "";
   assert.notEqual(firstId, secondId);
   assert.equal(JSON.stringify(game), before, "the preview must not mutate the state");
+});
+
+test("the resurrect select offers only the targets the engine accepts", () => {
+  const game = createGame(6);
+  game.night.number = 3;
+  game.players["1"]!.roleId = "shabaloth";
+  game.players["2"]!.alive = false;
+  game.players["3"]!.alive = false;
+  game.players["4"]!.alive = false;
+  game.players["1"]!.used = { shabalothTargets: ["2", "4"], shabalothTargetsNight: 2 };
+  const shabaloth: NightStep = {
+    key: "n3-shabaloth",
+    kind: "role",
+    roleId: "shabaloth",
+    actorId: "1",
+    targetIds: [],
+  };
+  assert.deepEqual(resurrectChoices(game, shabaloth, []), ["2", "4"]);
+  game.players["1"]!.used.shabalothTargetsNight = 1;
+  assert.deepEqual(resurrectChoices(game, shabaloth, []), [], "a skipped night clears the choice");
+
+  const professor: NightStep = {
+    key: "n3-professor",
+    kind: "role",
+    roleId: "professor",
+    actorId: "1",
+    targetIds: [],
+  };
+  assert.deepEqual(resurrectChoices(game, professor, ["3"]), ["3"]);
+  assert.deepEqual(resurrectChoices(game, professor, []), []);
+  assert.deepEqual(resurrectChoices(game, professor, ["3", "4"]), ["3", "4"]);
 });
 
 test("target bounds follow the step's fixed target mode", () => {

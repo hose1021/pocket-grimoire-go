@@ -46,7 +46,7 @@ profile.
 | `src/ui/screens/bag.tsx` | setup screen: scenario picker, count, legal bag, bluffs, Drunk mask |
 | `src/ui/screens/seat.tsx` | seat order and swaps |
 | `src/ui/screens/secrets.tsx` | red herring, one-of-two pairs, reminder checklist |
-| `src/ui/screens/table/` | host console: deal, night, day, host-recorded execution, win, review |
+| `src/ui/screens/table/` | host table: seat ring and hub, fixed dock, dawn report, player card, night/day decisions, win, review |
 | `src/ui/screens/player.tsx` | safe handoff with a public-only role projection |
 | `src/ui/screens/public.tsx` | public screen with no roles, bluffs, notes or effects |
 | `src/entry/screens/help.ts` | compact rules and all-role reference |
@@ -162,18 +162,41 @@ state and optional pending Demon-heir choice.
   curated suggestions for every count in each official scenario; Drunk
   real/shown split; three good bluffs not in play,
   excluding the Drunk mask; bluffs and the Drunk mask are role tokens with
-  names under them; 5–6 player games have no bluffs. Named pools and exact
-  bags can be saved, reloaded, exported and imported. Legal does not mean
-  balanced.
+  names under them; the Drunk mask has its own labelled section outside the
+  Demon bluff group; 5–6 player games have no bluffs. The player-count stepper
+  moves exactly one per activation, including after a script switch. Named
+  pools and exact bags can be saved, reloaded, exported and imported. Legal
+  does not mean balanced.
 - `/seat`: ring in seat order, swap, shuffle, undo; names only, after players
   have entered them in `/player`. New games start with blank names; the player
   flow requires a non-empty name before it claims a number.
 - `/secrets`: host-chosen red herring and one-of-two pairs (no auto-fill),
   reminder checklist, host-only role roster.
-- `/table`: one obvious next step; five-part guidance (host, player, grimoire,
-  public line, check); target picker; information card; night queue; day
-  announcement; host-recorded execution result; win; review gate. The app does
-  not keep a vote ledger in the UI.
+- `/table`: one host table. The app bar stays above a scrollable stage that
+  holds an oval of seats around a centre hub, with the fixed action dock below
+  it. Every seat keeps the player name at 360–390 px, role artwork on the
+  medallion and coloured text state badges (acting, nominated, scheduled
+  death, dead, registered death, ghost vote, poison, protection); an effect
+  badge names its source role when the state records one. The dock carries the
+  phase, the current step, the actor, the engine guidance, the active effects,
+  the consequence preview and the rejection reason. The hub shows the day's
+  nomination, the recorded votes and the `ceil(living / 2)` threshold, the
+  execution result and the dawn report; dismissing the dawn shows the active
+  nomination or an explicit no-nomination state. The day-help sheet carries
+  only the role forms; the madness review, a manual winner declaration and the
+  Tinker's day death live in the table menu. The day dock has exactly three
+  actions: execute the selected player, end the day without execution, and day
+  help. The day card and the dock share one selected player and one survival
+  choice, and both require a living target. A disabled Confirm lists every
+  blocker reason inside the step sheet. Nominations
+  and votes stay live at the table; the app records only the execution result
+  and keeps an imported nomination and the threshold read-only. The engine
+  remains the authority and a refused command shows its reason. A full-screen player card shows a role card, the night
+  information or a host-entered template: the Drunk sees the believed role and
+  a poisoned or drunk actor gets only the template. Host notes, the timer,
+  undo, import and export live in the table menu. The over panel names the
+  actual win cause, including a Demon execution. The host-adjudicated tracking
+  warning appears once per screen. Win and review gate stay.
 - `/player`: number picker; a tap on a free number shows the shown role with
   the auto-hide deadline; name entry; saving the name returns to the number
   picker, which offers seat arrangement once every number is claimed; warning
@@ -271,10 +294,12 @@ reproduces that behaviour locally.
   lookup occurs only for the selected seat; the number-picker projection
   contains no role details. Auto-hide uses a fixed deadline and survives
   rerendering without extending it.
-- Phone console tabs expose one of Play, Players, or Queue & Tools. Instructions
-  are collapsible and stored under `pg.guided`. Live controls target 44px minimum.
-- The Virgin action records triggering or non-triggering first nominations
-  without requiring a vote ledger. A correction can reopen a claimed number.
+- The phone table window is one column: the app bar, the scrollable table stage
+  and the fixed dock. Instructions are collapsible and stored under `pg.guided`.
+  Live controls target 44px minimum; the stage, not the document, scrolls.
+- The Virgin action records triggering or non-triggering first nominations. The
+  host can also record the voter list of a normal nomination; the engine counts
+  the threshold and the leader. A correction can reopen a claimed number.
 - Voting requires `ceil(living / 2)` votes plus a sole highest total.
 - `manifest.webmanifest`, `src/entry/offline.ts` and generated `sw.js` support
   offline loading. `scripts/build-offline.mjs` hashes the runtime asset set and

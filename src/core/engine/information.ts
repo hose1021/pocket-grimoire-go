@@ -13,7 +13,14 @@ export type InfoResult = {
   needsChoice?: boolean;
   options?: unknown[];
   text?: string;
+  /** Catalog key for `text`; the stored Russian sentence stays the fallback. */
+  textKey?: string;
+  textVars?: Record<string, string | number | undefined>;
+  /** Runs of false information end with the shared Storyteller suffix. */
+  falsifiedSuffix?: boolean;
   missing?: boolean;
+  /** The host answers because the data source is missing, not because the answer is false. */
+  hostAnswer?: boolean;
   zero?: boolean;
   bluffs?: string[];
   demonId?: string | null;
@@ -31,13 +38,19 @@ import { executionDeathForDay } from "./night.ts";
 import { bmrInfoForStep } from "./bmr.ts";
 import { svInfoForStep } from "./sv.ts";
 
+// Registration is an ability (Spy r3118, Recluse r3007): a drunk or poisoned
+// registrant has no ability, so the override never reaches an information path.
+function registrationApplies(state: GameState, player: Player | null): boolean {
+  return player ? !isImpaired(state, player.id) : false;
+}
+
 export function alignmentOf(
   state: GameState,
   player: Player | null,
   registrations: Registrations = {},
 ): "good" | "evil" | null {
   if (!player) return null;
-  const override = registrations[player.id];
+  const override = registrationApplies(state, player) ? registrations[player.id] : undefined;
   if (override === "good" || override === "evil") return override;
   return realTeamOf(player) === "evil" ? "evil" : "good";
 }
@@ -50,7 +63,7 @@ export function registersAsDemon(
   if (!player) return false;
   if (roleTeam(player.roleId || "") === "demon") return true;
   if (player.roleId === "recluse") {
-    return registrations[player.id] === "demon";
+    return registrationApplies(state, player) && registrations[player.id] === "demon";
   }
   return false;
 }
@@ -62,7 +75,11 @@ export function registersAsTownsfolk(
 ): boolean {
   if (!player) return false;
   if (roleTeam(player.roleId || "") === "townsfolk") return true;
-  return player.roleId === "spy" && registrations[player.id] === "townsfolk";
+  return (
+    player.roleId === "spy" &&
+    registrationApplies(state, player) &&
+    registrations[player.id] === "townsfolk"
+  );
 }
 
 export function registersAsMinion(
@@ -72,7 +89,11 @@ export function registersAsMinion(
 ): boolean {
   if (!player) return false;
   if (roleTeam(player.roleId || "") === "minion") return true;
-  return player.roleId === "recluse" && registrations[player.id] === "minion";
+  return (
+    player.roleId === "recluse" &&
+    registrationApplies(state, player) &&
+    registrations[player.id] === "minion"
+  );
 }
 
 export function registersAsOutsider(
@@ -82,7 +103,11 @@ export function registersAsOutsider(
 ): boolean {
   if (!player) return false;
   if (roleTeam(player.roleId || "") === "outsider") return true;
-  return player.roleId === "spy" && registrations[player.id] === "outsider";
+  return (
+    player.roleId === "spy" &&
+    registrationApplies(state, player) &&
+    registrations[player.id] === "outsider"
+  );
 }
 
 export function chefCount(state: GameState, registrations: Registrations = {}): number {
@@ -132,6 +157,8 @@ export function characterChoices(
   if (actorImpaired) return ALL_ROLES.slice();
   const player = playerById(state, targetId);
   if (!player) return [];
+  // A drunk or poisoned Spy or Recluse has no registration to show.
+  if (isImpaired(state, targetId)) return [player.roleId as RoleId];
   if (player.roleId === "recluse") {
     return [player.roleId].concat(
       ALL_ROLES.filter((id) => roleTeam(id) === "minion" || roleTeam(id) === "demon"),

@@ -57,30 +57,40 @@ multi-colour gradient.
 
 ## Composition
 
-Desktop: `290px | table | 330px` from 1200 px; the table is the widest zone.
-Tablet: two columns, the log moves below. Phone: the table first, then the phase
-panel and the log; the app bar wraps its route list and no footer dock renders.
+One column: the app bar, the scrollable table stage and the action dock under
+it. From 620 px the stage centres a 1.42:1 table; the dock keeps the phase, the
+current step, one hint line and two action rows and never scrolls with the
+table. Below 620 px the table keeps a width-relative 100:145 height, so fifteen
+seats stay readable, and the stage is the only scroll container: the bar and the
+dock stay put and the document does not scroll sideways at 360–390 px.
 
-The table is a circle: tokens sit on the rim, the phase and the progress sit in
-the centre. Eight seats use the full radius; 11 and more pull the tokens closer
-to the rim. A token is as wide as `min(104px, 0.92 x the chord between two
-neighbours)`, so seats never cover each other; below 60 px per token the name and
-role label hide and the seat number and accessible name stay.
+The table is an ellipse of fifteen seats around a centre hub. Names stay visible
+at every width: near-horizontal seats put the label inward beside the medallion,
+the bottom seats above it and the rest below, and the paint order decreases with
+the seat index so a label is never cut by the next medallion. Medallions are
+44 px on a phone and 58 px on a desktop. Role art lives on the medallion; the
+role text lives in the player list, the step sheet and the player card. The
+state of a seat is a coloured text badge, and acting, nominated and dead seats
+also carry an outline, a strike or a mark, so colour is never the only channel.
 
 ## The two-second read
 
 At a glance the console must answer: which phase and day, who is alive, who is
-dead, who has votes, who is poisoned or protected, who acts now, and what the
-single next action is. The phase panel carries exactly one primary action.
+dead, who is nominated, who has votes, who is poisoned or protected, who acts
+now, and what the single next action is. The dock names the actor and the next
+action; the hub carries the threshold, the nomination, the dawn outcome and the
+execution result. The dock exposes exactly one primary action per phase.
 
 ## Component vocabulary
 
-`PlayerToken`, `RoleCard` (hidden, revealed, compact), `EventLog`, `GameTable`,
+`TableRing` (seats, hub and dawn report), `TableDock` (phase, guidance, preview
+and action rows), the full-screen player card, `EventLog`, `RoleCard`,
 `ArcaneAppBar` and the markup bar for the two string-composed screens. Both bars
-read one nav list from `app-bar-parts.ts`. `ActionButton`, `PhasePanel` and
-`GrimoirePanel` were drafted and deleted: every screen composes the one `.btn`,
-`.field` and `.label` primitive from the `components` layer instead. Components
-take plain props and never read the store or the engine.
+read one nav list from `app-bar-parts.ts`. `ActionButton`, `PhasePanel`,
+`GrimoirePanel`, `GameTable` and `PlayerToken` were drafted and deleted: every
+screen composes the one `.btn`, `.field` and `.label` primitive from the
+`components` layer instead. Components take plain props and never read the
+store or the engine.
 
 ## Motion
 

@@ -22,6 +22,8 @@ export const COMMAND_TYPES = [
   "gossipStatement",
   "jugglerGuess",
   "moonchildChoice",
+  "recordKlutzChoice",
+  "tinkerDeath",
   "recoverClaim",
   "dealGame",
   "startGame",
@@ -167,8 +169,14 @@ export interface CommandPayloads {
   endDay: Record<string, never>;
   useSlayer: { slayerId: string; targetId: string; options?: SlayerOptions };
   gossipStatement: { truth: boolean };
-  jugglerGuess: { playerId: string; roleId: string };
+  jugglerGuess: {
+    guesses?: Array<{ playerId: string; roleId: string }>;
+    playerId?: string;
+    roleId?: string;
+  };
   moonchildChoice: { targetId: string };
+  recordKlutzChoice: { targetId: string };
+  tinkerDeath: { playerId: string };
   recoverClaim: { playerId: string; reason?: string };
   dealGame: { options?: DealOptions };
   startGame: { options?: StartGameOptions };
@@ -242,7 +250,8 @@ type FieldRule =
   | "nullable-object"
   | "alignment"
   | "shift"
-  | "phase";
+  | "phase"
+  | "guess-array";
 
 type FieldSpec = readonly [rule: FieldRule, required?: true];
 
@@ -296,8 +305,10 @@ export const PAYLOAD_SCHEMA = {
   endDay: {},
   useSlayer: { slayerId: requiredString, targetId: requiredString, options: object },
   gossipStatement: { truth: ["boolean", true] },
-  jugglerGuess: { playerId: requiredString, roleId: requiredString },
+  jugglerGuess: { guesses: ["guess-array"], playerId: string, roleId: string },
   moonchildChoice: { targetId: requiredString },
+  recordKlutzChoice: { targetId: requiredString },
+  tinkerDeath: { playerId: requiredString },
   recoverClaim: { playerId: requiredString, reason: string },
   dealGame: { options: object },
   startGame: { options: object },
@@ -342,6 +353,16 @@ function matchesRule(value: unknown, rule: FieldRule): boolean {
       return isPlainObject(value);
     case "nullable-object":
       return value === null || isPlainObject(value);
+    case "guess-array":
+      return (
+        Array.isArray(value) &&
+        value.every(
+          (entry) =>
+            isPlainObject(entry) &&
+            typeof entry.playerId === "string" &&
+            typeof entry.roleId === "string",
+        )
+      );
     case "alignment":
       return value === "good" || value === "evil";
     case "shift":

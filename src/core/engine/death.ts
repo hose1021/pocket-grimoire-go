@@ -2,13 +2,20 @@ import type { Alignment, DeadAt, Death, GameState, Player, Winner } from "../mod
 
 // Trouble Brewing domain: death. No DOM or persistence.
 import { isBmrScript, isManualScript, isSnvScript, roleLabel, roleTeam } from "../model/rules.ts";
-import { livingPlayers, nowIso, orderedPlayers, playerById, realTeamOf } from "../model/state.ts";
+import {
+  livingPlayers,
+  nowIso,
+  orderedPlayers,
+  playerById,
+  realTeamOf,
+  registersAlive,
+} from "../model/state.ts";
 
 import { dayAt, currentAt, addLog } from "./context.ts";
 import { isImpaired, protectionFor, soldierSafe, mayorRedirects, bmrCannotDie } from "./effects.ts";
 import { HOST_CHOICE_REASONS } from "./host-choice.ts";
 
-import { demonChangePending } from "./night.ts";
+import { demonChangePending, executionDeathForDay } from "./night.ts";
 import { minionRetainsAbility } from "./retention.ts";
 
 const DEMON_REASONS = {
@@ -50,6 +57,21 @@ export function kill(
         player.used = player.used || {};
         player.used.zombuul = true;
         player.registeredDead = true;
+        // Zombuul r3022: the first death is replaced, not prevented. The player
+        // stays alive but a death is recorded for the day, so "if no-one died
+        // today" abilities (the Zombuul's own wake) see it.
+        state.deaths.push({
+          id: "death-" + (state.deaths.length + 1) + "-" + Math.random().toString(36).slice(2, 6),
+          playerId,
+          roleId: player.roleId,
+          cause,
+          phase: at.phase,
+          number: at.number,
+          at: nowIso(),
+          impaired: false,
+          livingBefore: livingPlayers(state).length,
+          zombuul: true,
+        });
         addLog(state, {
           secret: true,
           kind: "death",
@@ -119,9 +141,15 @@ export function becomeDemon(
     step.done = true;
     step.skipped = true;
     step.note = "Роль изменилась до шага: теперь это Демон.";
+    step.noteKey = "note.roleChangedDemon";
   }
   player.reminders = Array.isArray(player.reminders) ? player.reminders : [];
   if (!player.reminders.includes("Демон")) player.reminders.push("Демон");
+  // Poisoner r1737: when the Poisoner becomes the Imp there is no Poisoner in
+  // play, so every effect that player sourced ends with the role change.
+  for (const effect of state.effects) {
+    if (effect.sourceId === player.id) effect.active = false;
+  }
   state.night.demonChanged = true;
   addLog(state, {
     secret: true,
@@ -280,8 +308,10 @@ export function resolveAttack(
 
   const victim = playerById(state, victimId) as Player;
   const wasDemon = roleTeam(victim.roleId || "") === "demon";
-  const livingBefore = livingPlayers(state).length;
-  const selfKill = victimId === attackerId;
+  // Scarlet Woman r3117: "5 or more players alive" excludes a player other
+  // abilities see as dead, such as a registered-dead Zombuul.
+  const livingBefore = livingPlayers(state).filter(registersAlive).length;
+  const selfKill = !redirected && victimId === attackerId;
   const death = kill(state, victimId, selfKill ? "imp-self-kill" : "demon", at);
 
   let inheritance = null;
@@ -368,7 +398,7 @@ export function checkWin(
     ) {
       return setWinner(state, "evil", "evil-twin");
     }
-    if (endOfDay && state.day && !state.day.execution) {
+    if (endOfDay && state.day && !executionDeathForDay(state, state.day.number)) {
       const living = livingPlayers(state);
       if (
         living.some(
@@ -407,12 +437,24 @@ export function checkWin(
   }
 
   const saintDeath = state.deaths.find(
-    (death) => death.cause === "execution" && !death.impaired && death.roleId === "saint",
+    (death) =>
+      death.cause === "execution" &&
+      !death.impaired &&
+      death.roleId === "saint" &&
+      death.phase === "day" &&
+      (!state.day || death.number === state.day.number),
   );
   if (saintDeath) return setWinner(state, "evil", "saint");
 
   const living = livingPlayers(state);
-  if (endOfDay && state.day && !state.day.execution && living.length === 3) {
+  // Mayor r2995: "no execution occurs" means no execution death; a corpse
+  // selection is not an execution event.
+  if (
+    endOfDay &&
+    state.day &&
+    !executionDeathForDay(state, state.day.number) &&
+    living.length === 3
+  ) {
     const mayor = living.find((player) => mayorRedirects(state, player.id, dayAt(state)));
     if (mayor) return setWinner(state, "good", "mayor");
   }

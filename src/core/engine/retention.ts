@@ -22,6 +22,9 @@ export function minionRetainsAbility(state: GameState, playerId: string): boolea
   const player = playerById(state, playerId);
   if (!player || player.alive) return false;
   if (roleTeam(player.roleId || "") !== "minion") return false;
+  // The dead Minion keeps the ability only while it is sober and healthy: a
+  // drunk or poisoned Minion loses the retained ability until it recovers.
+  if (isImpaired(state, playerId, currentAt(state))) return false;
   const killedByVigormortis = state.deaths.some(
     (death) =>
       !death.fake &&

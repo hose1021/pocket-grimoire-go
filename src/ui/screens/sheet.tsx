@@ -8,8 +8,9 @@ import { RoleCard } from "../components/arcane/role-card.tsx";
 import { ArcaneAppBar } from "../components/arcane/app-bar.tsx";
 import { useShellPorts } from "../ports.ts";
 import { useGame } from "../store/use-game.ts";
+import { ALL_TRAVELLER_IDS, SCENARIO_TRAVELLERS, type SheetScenario } from "./sheet-scenarios.ts";
 
-type ScenarioKey = "tb" | "bmr" | "snv" | "all";
+type ScenarioKey = SheetScenario;
 
 const TB_IDS = [
   "washerwoman",
@@ -92,9 +93,8 @@ const SNV_IDS = [
   "vortox",
 ];
 
-const TRAVELLER_IDS = ["scapegoat", "gunslinger", "beggar", "bureaucrat", "thief"];
 const STANDARD_IDS = TB_IDS.concat(BMR_IDS, SNV_IDS);
-const SHEET_IDS = STANDARD_IDS.concat(TRAVELLER_IDS);
+const SHEET_IDS = STANDARD_IDS.concat(ALL_TRAVELLER_IDS);
 
 // The sheet filter is a reading preference: it never touches game setup.
 const SCENARIOS: Record<ScenarioKey, readonly string[]> = {
@@ -200,9 +200,10 @@ export function SheetScreen({ lang }: SheetScreenProps) {
     .map((id) => byId.get(id))
     .filter((role): role is Role => role !== undefined);
   const missing = catalog ? SHEET_IDS.filter((id) => !byId.has(id)) : [];
-  const travellers = TRAVELLER_IDS.map((id) => byId.get(id)).filter(
-    (role): role is Role => role !== undefined,
-  );
+  const travellerIds = SCENARIO_TRAVELLERS[scenario];
+  const travellers = travellerIds
+    .map((id) => byId.get(id))
+    .filter((role): role is Role => role !== undefined);
   const summaryCount = SCENARIOS[scenario].length;
   const summary = `${ports.strings.t(SCENARIO_LABELS[scenario])} · ${summaryCount} ${ports.strings.roleCount(summaryCount)}`;
 
@@ -294,7 +295,7 @@ export function SheetScreen({ lang }: SheetScreenProps) {
                     : "sheet-filter-count tabular-nums text-[10.5px] text-muted"
                 }
               >
-                {TRAVELLER_IDS.length}
+                {travellerIds.length}
               </span>
             </button>
           </div>

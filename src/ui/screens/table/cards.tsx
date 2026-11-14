@@ -3,44 +3,40 @@
 import {
   madnessReviewProjection,
   poisonChoicesProjection,
+  resurrectChoices,
   secretsProjection,
   seatProjection,
   shownRoleChoices,
-  stepProjection,
   tableProjection,
-  targetBounds,
 } from "../../../application/read-models/table.ts";
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import { livingPlayers, orderedPlayers, playerById } from "../../../core/model/state.ts";
-import { troubleBrewingScript } from "../../../core/model/scripts.ts";
 import { ALL_ROLES, isManualScript } from "../../../core/model/rules.ts";
 import { roleSupportEntries } from "../../../core/model/support.ts";
-import type { GameState, NightStep } from "../../../core/model/types.ts";
+import type { NightStep } from "../../../core/model/types.ts";
 import {
   applyGiven,
   causeText,
-  consequencesOf,
   displayName,
-  infoPayload,
+  guideForStep,
   infoText,
-  previewIdentity,
-  rejectionOf,
+  jugglerGuessingDay,
+  localizeVars,
+  normalizeJugglerGuesses,
+  redirectChoiceValue,
   roleNameOf,
-  stepBlockers,
   stepTitle,
   targetNames,
+  winReasonKey,
 } from "./helpers.ts";
-import type { StepBlocker, StepInfo } from "./helpers.ts";
+import type { StepInfo } from "./helpers.ts";
 import { Warn } from "./parts.tsx";
+import { stepContext } from "./step-context.ts";
 import { writeStepDraft } from "./step-draft.ts";
 import type { StepDraft } from "./step-draft.ts";
-import type { PreviewOutcome, ShellPorts } from "../../ports.ts";
 import type { TableView } from "./view.ts";
 import {
-  ACTIONS,
   ALERT,
-  ALERT_BAD,
   CARD,
   CARD_LINE,
   CARD_TEXT,
@@ -65,55 +61,7 @@ import {
 
 type PendingOption = { id: string; name: string; roleId: string };
 
-/** Shows the engine preview as the six separated consequence states. */
-function ConsequenceList({
-  outcome,
-  targets,
-  state,
-  ports,
-}: {
-  outcome: PreviewOutcome | null;
-  targets: string[];
-  state: GameState;
-  ports: ShellPorts;
-}) {
-  const t = ports.strings.t;
-  const lines = consequencesOf(outcome, targets);
-  const rejection = rejectionOf(outcome);
-  return (
-    <div className={`${SECTION} grid gap-1`} data-preview>
-      <span className="label">{t("ui.consequences")}</span>
-      {rejection ? (
-        <p className={`${ALERT} ${ALERT_BAD} m-0`} data-preview-reason>
-          {rejection.code === "error.66"
-            ? t("ui.madnessTransitionBlock")
-            : rejection.text || t("setupErrors")}
-        </p>
-      ) : null}
-      {lines.length ? (
-        <ul className="m-0 grid list-none gap-1 p-0">
-          {lines.map((line) => (
-            <li key={line.kind} className={MUTED} data-consequence={line.kind}>
-              <b>{t("ui.consequence." + line.kind)}</b>
-              {line.playerIds.length ? ": " + targetNames(line.playerIds, state, t) : ""}
-            </li>
-          ))}
-        </ul>
-      ) : rejection ? null : (
-        <p className={MUTED}>{t("ui.previewEmpty")}</p>
-      )}
-    </div>
-  );
-}
-
-function stepBlockerText(blocker: StepBlocker, minTargets: number, t: ShellPorts["strings"]["t"]) {
-  if (blocker === "targets") return t("ui.blockTargets", { count: minTargets });
-  if (blocker === "secrets") return t("ui.blockSecrets");
-  if (blocker === "given") return t("ui.blockGiven");
-  return t("ui.blockRedirect");
-}
-
-function effectName(kind: string, t: ShellPorts["strings"]["t"]): string {
+function effectName(kind: string, t: TableView["ports"]["strings"]["t"]): string {
   const key = "ui.effect." + kind;
   const label = t(key);
   return label === key ? kind : label;
@@ -132,12 +80,8 @@ export function MainCard({ view }: { view: TableView }) {
 }
 
 export function NightCard({ view }: { view: TableView }) {
-  const { state, ports, actions, viewVersion } = view;
+  const { state, ports, actions } = view;
   const t = ports.strings.t;
-  const endPreview = useMemo(
-    () => actions.preview({ type: "endNight", payload: {} }),
-    [actions.preview, viewVersion],
-  );
   const { step, progress, pendingDemonChange } = tableProjection(state);
   const pending = pendingDemonChange as {
     key: string;
@@ -148,7 +92,6 @@ export function NightCard({ view }: { view: TableView }) {
     const options = pending.pending ? pending.pending.options || [] : [];
     return (
       <section className={`host-card is-night ${NIGHT_CARD}`}>
-        {bmrWarning(view)}
         <p className="label">{t("pendingHeir")}</p>
         <h1 className={CARD_TITLE}>{t("pendingHeirText")}</h1>
         <div className={TARGET_GRID}>
@@ -181,7 +124,6 @@ export function NightCard({ view }: { view: TableView }) {
     return (
       <section className={`host-card is-night ${NIGHT_CARD}`}>
         {manualWarning(view)}
-        {bmrWarning(view)}
         <p className="label">
           {t("night")} {state.night.number}
         </p>
@@ -189,21 +131,6 @@ export function NightCard({ view }: { view: TableView }) {
         <p className={CARD_TEXT}>
           {t("check")}: {progress.done} / {progress.total}.
         </p>
-        <ConsequenceList outcome={endPreview} targets={[]} state={state} ports={ports} />
-        <button
-          className={`btn btn--accent ${PRIMARY}`}
-          type="button"
-          data-act="end-night"
-          onClick={() =>
-            actions.run({
-              type: "endNight",
-              payload: {},
-              ...previewIdentity(endPreview),
-            })
-          }
-        >
-          {t("finishNight")}
-        </button>
       </section>
     );
   }
@@ -212,59 +139,20 @@ export function NightCard({ view }: { view: TableView }) {
 }
 
 function StepCard({ view, step }: { view: TableView; step: NightStep }) {
-  const { state, drafts, ports, actions, viewVersion } = view;
+  const { state, drafts, ports, actions } = view;
   const t = ports.strings.t;
-  const guide = ports.guidance.for(step);
+  const guide = guideForStep(t, ports.guidance.for, state, step);
   const role = step.roleId ? ports.roles.byId(step.roleId) : null;
   const roleSupport = step.roleId ? roleSupportEntries([step.roleId])[0] : undefined;
   const actor = step.actorId ? playerById(state, step.actorId) : null;
   const key = step.key;
-  // Drafts are namespaced by game and night: a replaced game or the next night
-  // must never inherit a target or an answer from the previous one.
-  const draftKey = `${state.createdAt}:${state.night.number}:${key}`;
-  const registrations = drafts.registrations.get(draftKey) || {};
-  const selected = drafts.targets.get(draftKey) || [];
-  const derived = stepProjection(state, step, { targetIds: selected, registrations });
+  const context = stepContext(state, drafts, step);
+  const { draftKey, selected, registrations, given, redirect, derived } = context;
   const info = derived.info;
-  const given = drafts.givens.get(draftKey);
+  const { targetsIncomplete, deadImpTarget, poisonChoices } = context;
   const needsSetup = Boolean(info.missing);
-  const { min: minTargets, max: maxTargets } = targetBounds(step);
-  const targetsIncomplete = selected.length < minTargets || selected.length > maxTargets;
-  const selectedPlayer = selected[0] ? playerById(state, selected[0]) : null;
-  const deadImpTarget = step.roleId === "imp" && selectedPlayer !== null && !selectedPlayer.alive;
-  const targetIsMayor = derived.needsRedirect;
-  const redirect = drafts.redirects.get(draftKey);
-  const needsRedirect = Boolean(targetIsMayor && !redirect);
-  const blockers = stepBlockers({
-    needsSetup,
-    targetsIncomplete,
-    needsGiven: Boolean(info.needsChoice && !given && !targetsIncomplete),
-    needsRedirect,
-  });
+  const targetIsMayor = context.targetsMayor;
   const stepEffects = derived.effects;
-  const poisonChoices =
-    step.roleId === "vigormortis"
-      ? poisonChoicesProjection(state, drafts.bmrDeaths.get(draftKey) || [])
-      : [];
-  const payload = {
-    key,
-    targetIds: selected,
-    redirectId: redirect || null,
-    registrations,
-    given: infoPayload(drafts.givens.get(draftKey) || null),
-    resurrectId: drafts.bmrResurrect.get(draftKey) || null,
-    roleId: drafts.bmrRoles.get(draftKey) || null,
-    drunkId: drafts.bmrDrunk.get(draftKey) || null,
-    poisonId: drafts.bmrPoison.get(draftKey) || poisonChoices[0] || null,
-    deathIds: drafts.bmrDeaths.get(draftKey) || [],
-  };
-  const previewKey = JSON.stringify(payload);
-  const preview = useMemo(
-    () => actions.preview({ type: "completeNightStep", payload }),
-    // Payload content and the store publication decide the preview; undo and a
-    // mounted correction change the publication, not the draft text.
-    [actions.preview, previewKey, viewVersion],
-  );
 
   // Recovery aid: the untouched draft of this step survives a reload. It is
   // not a game mutation, so it never enters the store or the undo history.
@@ -285,51 +173,9 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
     writeStepDraft(ports.prefs.write, storedDraft);
   }, [ports.prefs.write, draftKey, storedDraftText]);
 
-  const complete = () => {
-    const result = actions.run({
-      type: "completeNightStep",
-      payload,
-      ...previewIdentity(preview),
-    });
-    if (result.status === "allowed") {
-      drafts.clearStep(draftKey);
-      writeStepDraft(ports.prefs.write, null);
-    }
-  };
-
-  const [actionsHost, setActionsHost] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    setActionsHost(document.querySelector<HTMLElement>("[data-table-actions]"));
-  }, []);
-  const stepActions = (
-    <>
-      <button
-        className="btn btn--amber min-h-[34px] !justify-center max-[900px]:min-h-11"
-        type="button"
-        data-act="complete"
-        data-key={key}
-        disabled={blockers.length > 0}
-        onClick={complete}
-      >
-        {step.targetMode !== "none" && selected.length ? t("confirmTarget") : t("completeStep")}
-      </button>
-      <button
-        className="btn btn--quiet min-h-[34px] !justify-center max-[900px]:min-h-11"
-        type="button"
-        data-act="skip"
-        data-key={key}
-        onClick={() => skipStep(view, key)}
-      >
-        {t("skipWake")}
-      </button>
-    </>
-  );
-
   return (
-    <section className={`host-card is-night ${NIGHT_CARD}`} data-step={key}>
-      {actionsHost ? createPortal(stepActions, actionsHost) : null}
+    <section className={`host-card is-night ${NIGHT_CARD}`} data-step={key} data-step-sheet>
       {manualWarning(view)}
-      {bmrWarning(view)}
       <div className="flex items-center justify-between gap-2">
         <p className="label">{t("ui.activeRole")}</p>
         <span className="text-[9px] uppercase tracking-[.12em] text-brass">
@@ -388,6 +234,13 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
           <p className={MUTED}>
             {t("ui.chosenTargets", { names: targetNames(selected, state, t) || "—" })}
           </p>
+          {step.noteKey || step.note ? (
+            <p className={MUTED} data-step-note>
+              {step.noteKey
+                ? t(step.noteKey, localizeVars(step.noteVars, ports.roles.byId))
+                : step.note}
+            </p>
+          ) : null}
           <div className="grid gap-1">
             <span className="label">{t("ui.activeEffects")}</span>
             {stepEffects.length ? (
@@ -412,29 +265,11 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
 
       {step.targetMode !== "none" ? (
         <div className="mt-3 rounded-sm border border-edge bg-crypt-3 p-2.5 text-[11px] text-muted">
-          <b className="text-text">Выберите цель на столе</b>
+          <b className="text-text">{t("ui.chooseTargetOnTable")}</b>
           {selected.length ? <span>: {targetNames(selected, state, t)}</span> : null}
           {deadImpTarget ? <p className={`${WARNING} mt-1`}>{t("ui.deadTarget")}</p> : null}
         </div>
       ) : null}
-
-      <div className="mt-3 grid gap-1.5">
-        <button
-          className="btn btn--quiet w-full !justify-start !text-[10px]"
-          type="button"
-          data-act="reset-step"
-          data-key={key}
-          onClick={() => {
-            drafts.dropTargets(draftKey);
-            drafts.dropRedirect(draftKey);
-            drafts.dropGiven(draftKey);
-            drafts.dropRegistrations(draftKey);
-            drafts.clearStep(draftKey);
-          }}
-        >
-          {t("ui.resetStep")}
-        </button>
-      </div>
 
       {targetIsMayor ? (
         <label className={FIELD_BOX}>
@@ -442,9 +277,12 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
           <select
             className="field"
             data-redirect={key}
-            value={redirect || "none"}
+            value={redirectChoiceValue(redirect)}
             onChange={(event) => drafts.putRedirect(draftKey, event.target.value || "none")}
           >
+            <option value="" disabled>
+              {t("ui.chooseRedirect")}
+            </option>
             <option value="none">{t("ui.mayorDies")}</option>
             {orderedPlayers(state)
               .filter((player) => player.id !== selected[0])
@@ -483,14 +321,43 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
           ) : null}
           {!needsSetup && !targetsIncomplete ? (
             step.roleId === "spy" ? (
-              <button
-                className="btn"
-                type="button"
-                data-act="show-grimoire"
-                onClick={actions.openGrimoire}
-              >
-                {t("ui.showGrimoire")}
-              </button>
+              <div className="grid gap-1">
+                <button
+                  className="btn"
+                  type="button"
+                  data-act="show-grimoire"
+                  onClick={actions.openGrimoire}
+                >
+                  {t("ui.showGrimoire")}
+                </button>
+                {derived.actorImpaired ? (
+                  <p className={`${ALERT} text-amber-2`} data-warning="spyFalseGrimoire">
+                    {t("ui.spyFalseGrimoire")}
+                  </p>
+                ) : null}
+              </div>
+            ) : derived.actorImpaired ? (
+              <div className="mt-1 grid gap-1.5" data-template>
+                <label className={FIELD_BOX}>
+                  <span className="label">{t("ui.template")}</span>
+                  <textarea
+                    className="field min-h-[64px] resize-y"
+                    data-info-template
+                    value={drafts.infoTemplate}
+                    onChange={(event) => drafts.setInfoTemplate(event.target.value)}
+                  />
+                </label>
+                <p className={MUTED}>{t("ui.templateHint")}</p>
+                <button
+                  className="btn"
+                  type="button"
+                  data-act="show-template"
+                  disabled={!drafts.infoTemplate.trim()}
+                  onClick={() => actions.openInfo(key)}
+                >
+                  {t("ui.showTemplate")}
+                </button>
+              </div>
             ) : (
               <button
                 className="btn"
@@ -516,32 +383,8 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
       ) : null}
 
       <BmrOutcome view={view} step={step} draftKey={draftKey} />
-
-      <div className={targetsIncomplete ? "sr-only" : ""}>
-        <ConsequenceList outcome={preview} targets={selected} state={state} ports={ports} />
-      </div>
-
-      {blockers.filter((blocker) => blocker !== "targets").length ? (
-        <div className={`${ALERT} ${ALERT_BAD}`} data-blocker={key}>
-          <b>{t("ui.blockedTitle")}</b>
-          <ul className="m-0 mt-1 list-disc pl-4">
-            {blockers
-              .filter((blocker) => blocker !== "targets")
-              .map((blocker) => (
-                <li key={blocker} data-blocker-reason={blocker}>
-                  {stepBlockerText(blocker, minTargets, t)}
-                </li>
-              ))}
-          </ul>
-        </div>
-      ) : null}
-      {blockers.includes("targets") ? <span hidden data-blocker-reason="targets" /> : null}
     </section>
   );
-}
-
-function skipStep(view: TableView, key: string) {
-  view.actions.run({ type: "skipStep", payload: { key } });
 }
 
 function guideRow(label: string, text: string | undefined) {
@@ -665,6 +508,31 @@ function GivenSelect({
   const { state, drafts, ports } = view;
   const t = ports.strings.t;
   if (!info.needsChoice) return null;
+  if (info.kind === "note") {
+    // The host decides what a note-style role learns (Dreamer, Sage,
+    // Mathematician under a Vortox): the recorded text is the decision.
+    const current = drafts.givens.get(draftKey);
+    return (
+      <label className={FIELD_BOX}>
+        <span className="label">{t("falseInfo")}</span>
+        <textarea
+          className="field min-h-[52px] resize-y"
+          data-given={step.key}
+          data-given-kind="note"
+          defaultValue={current?.text ?? ""}
+          placeholder={info.text || t("computed")}
+          onChange={(event) => {
+            const text = event.target.value.trim();
+            if (!text) {
+              drafts.dropGiven(draftKey);
+              return;
+            }
+            drafts.putGiven(draftKey, { ...info, text, needsChoice: false });
+          }}
+        />
+      </label>
+    );
+  }
   let options: Array<string | number | boolean> = [];
   let kind = "number";
   if (info.kind === "number") {
@@ -694,9 +562,18 @@ function GivenSelect({
         : ALL_ROLES;
   }
   if (!options.length) return null;
+  // A character answer for a healthy Undertaker or Ravenkeeper is a
+  // registration decision, and a missing data source is a plain host answer;
+  // only a false-information decision gets the false-information label.
+  const label =
+    kind === "role" && !info.impaired
+      ? t("registration")
+      : info.hostAnswer && !info.impaired
+        ? t("ui.hostAnswer")
+        : t("falseInfo");
   return (
     <label className={FIELD_BOX}>
-      <span className="label">{t("falseInfo")}</span>
+      <span className="label">{label}</span>
       <select
         className="field"
         data-given={step.key}
@@ -752,8 +629,54 @@ function BmrOutcome({
     <div className={`${SECTION} grid gap-1`}>
       <span className="label">{t("bmrOutcome")}</span>
       <p className={MUTED}>{t(step.roleId === "pukka" ? "bmrPukkaAuto" : "bmrHostRuns")}</p>
-      {step.canKill ? (
-        <>
+      {Array.isArray(step.roleChoices) && step.roleChoices.length ? (
+        <div className="grid gap-1 rounded-sm border border-edge p-2" data-bmr-decision="role">
+          <label className={FIELD_BOX}>
+            <span className="label">{t("bmrRoleChoice")}</span>
+            <select
+              className="field"
+              data-bmr-role={key}
+              value={drafts.bmrRoles.get(draftKey) || ""}
+              onChange={(event) => drafts.putBmrRole(draftKey, event.target.value || null)}
+            >
+              <option value="">{t("ui.chooseRole")}</option>
+              {(step.roleChoices as unknown[]).map((id) => (
+                <option key={String(id)} value={String(id)}>
+                  {roleNameOf(String(id), ports.roles.byId)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
+      {step.roleId === "tinker" ? (
+        <div className="grid gap-1 rounded-sm border border-edge p-2" data-bmr-decision="tinker">
+          <span className="label">{t("ui.tinkerDecision")}</span>
+          <p className={`${MUTED} m-0`}>{t("ui.tinkerHint")}</p>
+          <div className={INLINE}>
+            <button
+              className={`${TARGET} ${deaths.includes(String(step.actorId)) ? TARGET_ON : ""}`}
+              type="button"
+              data-tinker-decision="die"
+              onClick={() =>
+                drafts.putBmrDeaths(draftKey, step.actorId ? [String(step.actorId)] : [])
+              }
+            >
+              {t("ui.tinkerDies")}
+            </button>
+            <button
+              className={`${TARGET} ${deaths.length ? "" : TARGET_ON}`}
+              type="button"
+              data-tinker-decision="live"
+              onClick={() => drafts.putBmrDeaths(draftKey, [])}
+            >
+              {t("ui.tinkerLives")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {step.canKill && step.roleId !== "tinker" ? (
+        <div className="grid gap-1 rounded-sm border border-edge p-2" data-bmr-decision="marking">
           <div className={TARGET_GRID}>
             {orderedPlayers(state)
               .filter((player) => player.alive)
@@ -784,7 +707,7 @@ function BmrOutcome({
           <p className={MUTED}>
             {t("bmrDeaths")}: {targetNames(deaths, state, t) || "—"}
           </p>
-        </>
+        </div>
       ) : null}
       {poisonChoices.length ? (
         <label className={FIELD_BOX}>
@@ -806,24 +729,6 @@ function BmrOutcome({
           </select>
         </label>
       ) : null}
-      {Array.isArray(step.roleChoices) && step.roleChoices.length ? (
-        <label className={FIELD_BOX}>
-          <span className="label">{t("bmrRoleChoice")}</span>
-          <select
-            className="field"
-            data-bmr-role={key}
-            value={drafts.bmrRoles.get(draftKey) || ""}
-            onChange={(event) => drafts.putBmrRole(draftKey, event.target.value || null)}
-          >
-            <option value="">{t("ui.chooseRole")}</option>
-            {(step.roleChoices as unknown[]).map((id) => (
-              <option key={String(id)} value={String(id)}>
-                {roleNameOf(String(id), ports.roles.byId)}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
       {(step.roleId === "sailor" || step.roleId === "innkeeper") &&
       (drafts.targets.get(draftKey) || []).length ? (
         <label className={FIELD_BOX}>
@@ -834,15 +739,22 @@ function BmrOutcome({
             value={drafts.bmrDrunk.get(draftKey) || ""}
             onChange={(event) => drafts.putBmrDrunk(draftKey, event.target.value || null)}
           >
-            <option value="">{t("none")}</option>
-            {(drafts.targets.get(draftKey) || []).map((id) => {
-              const player = playerById(state, id);
-              return (
-                <option key={id} value={id}>
-                  {player ? displayName(player, t) : id}
-                </option>
-              );
-            })}
+            <option value="" disabled>
+              {t("ui.choosePlayer")}
+            </option>
+            {(step.roleId === "sailor"
+              ? [step.actorId, ...(drafts.targets.get(draftKey) || [])]
+              : drafts.targets.get(draftKey) || []
+            )
+              .filter((id): id is string => Boolean(id))
+              .map((id) => {
+                const player = playerById(state, id);
+                return (
+                  <option key={id} value={id}>
+                    {player ? displayName(player, t) : id}
+                  </option>
+                );
+              })}
           </select>
         </label>
       ) : null}
@@ -856,11 +768,15 @@ function BmrOutcome({
             onChange={(event) => drafts.putBmrResurrect(draftKey, event.target.value || null)}
           >
             <option value="">{t("none")}</option>
-            {dead.map((player) => (
-              <option key={player.id} value={player.id}>
-                {displayName(player, t)} · {roleNameOf(player.roleId, ports.roles.byId)}
-              </option>
-            ))}
+            {resurrectChoices(state, step, drafts.targets.get(draftKey) || []).map((id) => {
+              const player = playerById(state, id);
+              return (
+                <option key={id} value={id}>
+                  {player ? displayName(player, t) : id} ·{" "}
+                  {roleNameOf(player ? player.roleId : "", ports.roles.byId)}
+                </option>
+              );
+            })}
           </select>
         </label>
       ) : null}
@@ -868,17 +784,20 @@ function BmrOutcome({
   );
 }
 
-export function DayCard({ view }: { view: TableView }) {
-  const { state, drafts, ports, actions, viewVersion } = view;
+export function DayCard({
+  view,
+  roleFormsOnly = false,
+}: {
+  view: TableView;
+  roleFormsOnly?: boolean;
+}) {
+  const { state, drafts, ports, actions } = view;
   const t = ports.strings.t;
-  // Local to the day card: the choice must not survive into the next day.
-  const [execSurvives, setExecSurvives] = useState(false);
-  const [madnessReasons, setMadnessReasons] = useState<Record<string, string>>({});
+  // The execution choice and its survival flag live in the shared drafts, so
+  // the day card and the dock make one decision.
   const day = state.day;
-  const madnessReviews = madnessReviewProjection(state);
   const executed = day.execution ? playerById(state, day.execution.playerId) : null;
   const living = livingPlayers(state);
-  const { threshold, living: livingCount } = tableProjection(state);
   const manual = isManualScript(state.script);
   const pacifistSupport = roleSupportEntries(state.setup.roles || []).find(
     (entry) => entry.roleId === "pacifist",
@@ -894,32 +813,178 @@ export function DayCard({ view }: { view: TableView }) {
           (player) => player.roleId === "slayer" && player.alive && !player.used.slayer,
         )
       : null;
-  const canExecute = Boolean(drafts.executeTarget) && !day.execution && !day.ended && !state.winner;
-  const endPreview = useMemo(
-    () => actions.preview({ type: "endDay", payload: {} }),
-    [actions.preview, viewVersion],
-  );
+  const canExecute =
+    Boolean(drafts.executeTarget) &&
+    Boolean(playerById(state, drafts.executeTarget)?.alive) &&
+    !day.execution &&
+    !day.ended &&
+    !state.winner;
 
   return (
     <section className={`host-card is-day ${DAY_CARD}`} data-step="day">
       {manualWarning(view)}
-      {bmrWarning(view)}
       <p className="label">
         {t("day")} {day.number}
       </p>
-      <h1 className={CARD_TITLE}>{t("dawn")}</h1>
-      <div className="my-2 border-l-2 border-edge-2 pl-[9px]">
-        <span className="label">{t("morning")}</span>
-        <p className={CARD_TEXT}>
-          {day.morning.length
-            ? `${t("died")}: ${day.morning
-                .map((death) => displayName(playerById(state, death.playerId), t))
-                .join(", ")}.`
-            : t("noDeaths")}
-        </p>
-        <p className={MUTED}>{t("ui.announceNames")}</p>
-      </div>
+      <h1 className={CARD_TITLE}>{t("ui.dayResult")}</h1>
 
+      {!roleFormsOnly && !day.execution && !day.ended ? (
+        <div className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5">
+          <span className="label">{t("ui.executedWho")}</span>
+          <div className={INLINE}>
+            <select
+              className="field min-w-[180px]"
+              data-exec-target
+              value={drafts.executeTarget}
+              onChange={(event) => drafts.setExecuteTarget(event.target.value)}
+            >
+              <option value="">{t("ui.noExecution")}</option>
+              {orderedPlayers(state).map((player) => (
+                <option key={player.id} value={player.id}>
+                  {displayName(player, t)}
+                  {player.alive ? "" : t("ui.alreadyDead")}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn--accent"
+              type="button"
+              data-act="execute-direct"
+              disabled={!canExecute}
+              onClick={() => {
+                if (!drafts.executeTarget) return;
+                const result = actions.run({
+                  type: "executeByDecision",
+                  payload: {
+                    playerId: drafts.executeTarget,
+                    options: { survives: drafts.executeSurvives },
+                  },
+                });
+                if (result.status === "allowed") {
+                  drafts.setExecuteTarget("");
+                  drafts.setExecuteSurvives(false);
+                }
+              }}
+            >
+              {t("execute")}
+            </button>
+          </div>
+          {state.script &&
+          Array.isArray(state.script.roles) &&
+          state.script.roles.some((id) =>
+            ["pacifist", "sailor", "fool", "devilsadvocate", "zombuul"].includes(id),
+          ) ? (
+            <label className={CHECK}>
+              <input
+                type="checkbox"
+                data-exec-survives
+                checked={drafts.executeSurvives}
+                onChange={(event) => drafts.setExecuteSurvives(event.target.checked)}
+              />
+              <span>{pacifistSupport ? t("ui.pacifistSurvives") : t("survivesExecution")}</span>
+            </label>
+          ) : null}
+          {pacifistSupport ? (
+            <p className={MUTED} data-role-support="pacifist" data-status={pacifistSupport.status}>
+              <b>{t("roleSupport")}:</b> {t("roleSupport." + pacifistSupport.status)} —{" "}
+              {t(pacifistSupport.detail)}
+            </p>
+          ) : null}
+          <p className={MUTED}>{t("ui.tableVotes")}</p>
+        </div>
+      ) : null}
+
+      {!manual && virgin && !day.execution && !day.ended ? (
+        <form
+          className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5"
+          data-virgin-form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const data = new FormData(event.currentTarget);
+            actions.run({
+              type: "recordVirginNomination",
+              payload: {
+                nominatorId: String(data.get("nominator") || ""),
+                virginId: virgin.id,
+                options: { spyRegistersTownsfolk: data.has("spy") },
+              },
+            });
+          }}
+        >
+          <h2 className="m-0 text-[18px]">{t("virginNomination")}</h2>
+          <p className={CARD_TEXT}>{t("virginHint")}</p>
+          <label className="grid gap-1.5">
+            {t("nominator")}
+            <select className="field" name="nominator" required defaultValue="">
+              <option value="">{t("chooseTarget")}</option>
+              {living.map((player) => (
+                <option key={player.id} value={player.id}>
+                  {player.seat} · {displayName(player, t)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" name="spy" /> {t("spyTownsfolk")}
+          </label>
+          <button className="btn" type="submit" data-virgin={virgin.id}>
+            {t("recordNomination")}
+          </button>
+        </form>
+      ) : null}
+
+      {!roleFormsOnly && executed ? (
+        <div className="my-2.5 rounded-md border border-crimson-dim bg-crimson-dim/20 p-2.5">
+          <span className="label">{t("execution")}</span>
+          <b className="my-0.5 block text-[18px]">{displayName(executed, t)}</b>
+          <p className={MUTED}>
+            {day.execution?.deathId ? t("ui.executedDied") : t("ui.executedNoDeath")}
+          </p>
+        </div>
+      ) : null}
+
+      {slayer ? <SlayerPanel view={view} slayerId={slayer.id} /> : null}
+      {manual ? null : <GossipPanel view={view} />}
+      {manual ? null : <JugglerPanel view={view} />}
+      {manual ? null : <MoonchildPanel view={view} />}
+      {manual ? null : mastermindPanel(view)}
+    </section>
+  );
+}
+
+/**
+ * The day actions that are not role forms: the madness review, the manual
+ * winner (manual scripts only) and the Tinker's daytime death. They live in the
+ * table menu, not in the day-help sheet, which only resolves role forms.
+ */
+export function DayActionsPanel({ view }: { view: TableView }) {
+  const { state, ports, drafts, actions } = view;
+  const t = ports.strings.t;
+  const [madnessReasons, setMadnessReasons] = useState<Record<string, string>>({});
+  const madnessReviews = madnessReviewProjection(state);
+  const day = state.day;
+  const manual = isManualScript(state.script);
+  const tinker =
+    state.script && Array.isArray(state.script.roles) && state.script.roles.includes("tinker")
+      ? orderedPlayers(state).find((player) => player.roleId === "tinker" && player.alive)
+      : null;
+  if (!madnessReviews.length && !manual && !tinker) return null;
+  return (
+    <>
+      {tinker && state.phase === "day" && !day.execution && !day.ended && !state.winner ? (
+        <div className="grid gap-1.5 rounded-sm border border-edge p-2.5" data-tinker-day>
+          <span className="label">{t("ui.tinkerDay")}</span>
+          <p className={`${MUTED} m-0`}>{t("ui.tinkerDayHint")}</p>
+          <button
+            className="btn"
+            type="button"
+            data-act="tinker-day-death"
+            onClick={() => actions.run({ type: "tinkerDeath", payload: { playerId: tinker.id } })}
+          >
+            {t("ui.tinkerDayDies")}
+          </button>
+        </div>
+      ) : null}
       {madnessReviews.length ? (
         <div
           className={`${SECTION} grid gap-2 border border-edge-2 border-l-2 border-l-accent p-2.5`}
@@ -992,7 +1057,8 @@ export function DayCard({ view }: { view: TableView }) {
                       {t("ui.madnessExecute")}
                     </button>
                   ) : null}
-                  {!executed && effect.decidedPenalty !== "none" ? (
+                  {!executed &&
+                  (effect.decidedPenalty !== "none" || effect.decidedDay !== day.number) ? (
                     <button
                       className="btn"
                       type="button"
@@ -1019,140 +1085,8 @@ export function DayCard({ view }: { view: TableView }) {
           })}
         </div>
       ) : null}
-
-      {!day.execution && !day.ended ? (
-        <div className="my-3 grid gap-1 rounded-sm border border-edge border-l-2 border-l-accent bg-crypt-2 px-3 py-2.5">
-          <span className="label">{t("ui.voting")}</span>
-          <b className="text-[15px]">
-            {t("voteMinimum", { count: threshold, living: livingCount })}
-          </b>
-          <p className={MUTED}>{t("voteRule")}</p>
-        </div>
-      ) : null}
-
-      {!day.execution && !day.ended ? (
-        <div className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5">
-          <span className="label">{t("ui.executedWho")}</span>
-          <div className={INLINE}>
-            <select
-              className="field min-w-[180px]"
-              data-exec-target
-              value={drafts.executeTarget}
-              onChange={(event) => drafts.setExecuteTarget(event.target.value)}
-            >
-              <option value="">{t("ui.noExecution")}</option>
-              {orderedPlayers(state).map((player) => (
-                <option key={player.id} value={player.id}>
-                  {displayName(player, t)}
-                  {player.alive ? "" : t("ui.alreadyDead")}
-                </option>
-              ))}
-            </select>
-            <button
-              className="btn btn--accent"
-              type="button"
-              data-act="execute-direct"
-              disabled={!canExecute}
-              onClick={() => {
-                if (!drafts.executeTarget) return;
-                const result = actions.run({
-                  type: "executeByDecision",
-                  payload: {
-                    playerId: drafts.executeTarget,
-                    options: { survives: execSurvives },
-                  },
-                });
-                if (result.status === "allowed") {
-                  drafts.setExecuteTarget("");
-                  setExecSurvives(false);
-                }
-              }}
-            >
-              {t("execute")}
-            </button>
-          </div>
-          {state.script &&
-          Array.isArray(state.script.roles) &&
-          state.script.roles.some((id) =>
-            ["pacifist", "sailor", "fool", "devilsadvocate", "zombuul"].includes(id),
-          ) ? (
-            <label className={CHECK}>
-              <input
-                type="checkbox"
-                data-exec-survives
-                checked={execSurvives}
-                onChange={(event) => setExecSurvives(event.target.checked)}
-              />
-              <span>{t("survivesExecution")}</span>
-            </label>
-          ) : null}
-          {pacifistSupport ? (
-            <p className={MUTED} data-role-support="pacifist" data-status={pacifistSupport.status}>
-              <b>{t("roleSupport")}:</b> {t("roleSupport." + pacifistSupport.status)} —{" "}
-              {t(pacifistSupport.detail)}
-            </p>
-          ) : null}
-          <p className={MUTED}>{t("ui.tableVotes")}</p>
-        </div>
-      ) : null}
-
-      {!manual && virgin && !day.execution && !day.ended ? (
-        <form
-          className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5"
-          data-virgin-form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const data = new FormData(event.currentTarget);
-            actions.run({
-              type: "recordVirginNomination",
-              payload: {
-                nominatorId: String(data.get("nominator") || ""),
-                virginId: virgin.id,
-                options: { spyRegistersTownsfolk: data.has("spy") },
-              },
-            });
-          }}
-        >
-          <h2 className="m-0 text-[18px]">{t("virginNomination")}</h2>
-          <p className={CARD_TEXT}>{t("virginHint")}</p>
-          <label className="grid gap-1.5">
-            {t("nominator")}
-            <select className="field" name="nominator" required defaultValue="">
-              <option value="">{t("chooseTarget")}</option>
-              {living.map((player) => (
-                <option key={player.id} value={player.id}>
-                  {player.seat} · {displayName(player, t)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input type="checkbox" name="spy" /> {t("spyTownsfolk")}
-          </label>
-          <button className="btn" type="submit" data-virgin={virgin.id}>
-            {t("recordNomination")}
-          </button>
-        </form>
-      ) : null}
-
-      {executed ? (
-        <div className="my-2.5 rounded-md border border-crimson-dim bg-crimson-dim/20 p-2.5">
-          <span className="label">{t("execution")}</span>
-          <b className="my-0.5 block text-[18px]">{displayName(executed, t)}</b>
-          <p className={MUTED}>
-            {day.execution?.deathId ? t("ui.executedDied") : t("ui.executedNoDeath")}
-          </p>
-        </div>
-      ) : null}
-
-      {slayer ? <SlayerPanel view={view} slayerId={slayer.id} /> : null}
-      {manual ? null : <GossipPanel view={view} />}
-      {manual ? null : <JugglerPanel view={view} />}
-      {manual ? null : <MoonchildPanel view={view} />}
-      {manual ? null : mastermindPanel(view)}
-
       {manual ? (
-        <div className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5">
+        <div className="grid gap-1.5 rounded-sm border border-edge p-2.5">
           <span className="label">{t("manualWinner")}</span>
           <div className={INLINE}>
             <select
@@ -1183,31 +1117,11 @@ export function DayCard({ view }: { view: TableView }) {
           <p className={MUTED}>{t("manualWinnerHint")}</p>
         </div>
       ) : null}
-
-      <ConsequenceList outcome={endPreview} targets={[]} state={state} ports={ports} />
-
-      <div className={ACTIONS}>
-        <button
-          className="btn btn--accent"
-          type="button"
-          data-act="end-day"
-          onClick={() => {
-            drafts.setExecuteTarget("");
-            actions.run({
-              type: "endDay",
-              payload: {},
-              ...previewIdentity(endPreview),
-            });
-          }}
-        >
-          {day.execution || day.ended ? t("endDay") : t("noExecution")}
-        </button>
-      </div>
-    </section>
+    </>
   );
 }
 
-function SlayerPanel({ view, slayerId }: { view: TableView; slayerId: string }) {
+export function SlayerPanel({ view, slayerId }: { view: TableView; slayerId: string }) {
   const { state, drafts, ports, actions } = view;
   const t = ports.strings.t;
   const selected = orderedPlayers(state).find((player) => player.id === drafts.slayerTarget);
@@ -1308,18 +1222,35 @@ function JugglerPanel({ view }: { view: TableView }) {
     state.script && Array.isArray(state.script.roles) && state.script.roles.includes("juggler")
       ? orderedPlayers(state).find((player) => player.roleId === "juggler" && player.alive)
       : null;
-  if (!juggler || state.phase !== "day" || state.day.number !== 1 || state.day.ended) {
+  const storedDay =
+    state.juggler && typeof state.juggler.day === "number" ? state.juggler.day : null;
+  const guessingDay = jugglerGuessingDay(
+    state.day.number,
+    storedDay,
+    Boolean(juggler && juggler.changedFrom),
+  );
+  if (
+    !juggler ||
+    state.phase !== "day" ||
+    state.day.ended ||
+    state.winner ||
+    juggler.used.juggler ||
+    guessingDay !== state.day.number
+  ) {
     return null;
   }
-  const guesses = state.juggler && state.juggler.day === 1 ? state.juggler.guesses : {};
-  const count = Object.keys(guesses).length;
+  const guesses = normalizeJugglerGuesses(state.juggler ? state.juggler.guesses : null);
+  const count = guesses.length;
   const target = drafts.jugglerTarget;
-  const full = count >= 5 && !guesses[target];
+  const full = count >= 5;
   return (
     <div className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5">
       <span className="label">{t("jugglerPanel")}</span>
       <p className={MUTED}>
         {displayName(juggler, t)}: {t("jugglerHint")}
+      </p>
+      <p className={MUTED} data-juggler-count>
+        {t("jugglerCount", { count })}
       </p>
       <div className={INLINE}>
         <select
@@ -1364,15 +1295,24 @@ function JugglerPanel({ view }: { view: TableView }) {
         >
           {t("jugglerAdd")}
         </button>
+        <button
+          className="btn"
+          type="button"
+          data-act="juggler-none"
+          disabled={count > 0 || Boolean(state.juggler) || Boolean(state.winner)}
+          onClick={() => actions.run({ type: "jugglerGuess", payload: { guesses: [] } })}
+        >
+          {t("jugglerNone")}
+        </button>
       </div>
       {count ? (
         <ul className="m-0 grid gap-1 pl-4">
-          {Object.entries(guesses).map(([id, roleId]) => {
-            const player = state.players[id];
+          {guesses.map((guess, index) => {
+            const player = state.players[guess.playerId];
             return (
-              <li key={id} className={MUTED}>
-                {player ? displayName(player, t) : id}:{" "}
-                {roleNameOf(String(roleId), ports.roles.byId)}
+              <li key={guess.playerId + "-" + index} className={MUTED}>
+                {player ? displayName(player, t) : guess.playerId}:{" "}
+                {roleNameOf(guess.roleId, ports.roles.byId)}
               </li>
             );
           })}
@@ -1471,51 +1411,11 @@ export function DealCard({ view }: { view: TableView }) {
   const errors = secretsProjection(state).errors;
   const step = !everyoneNamed ? "names" : !seated ? "seats" : "secrets";
   const route = step === "names" ? "player" : step === "seats" ? "seat" : "secrets";
-  const demo15 = () => {
-    const roles = [
-      "washerwoman",
-      "librarian",
-      "investigator",
-      "chef",
-      "empath",
-      "fortuneteller",
-      "undertaker",
-      "monk",
-      "ravenkeeper",
-      "butler",
-      "saint",
-      "poisoner",
-      "spy",
-      "scarletwoman",
-      "imp",
-    ];
-    const run = actions.run;
-    if (run({ type: "newGame", payload: { count: 15 } }).status !== "allowed") return;
-    if (
-      run({
-        type: "bagUpdate",
-        payload: {
-          patch: {
-            script: troubleBrewingScript(),
-            count: 15,
-            roles,
-            bluffs: ["virgin", "slayer", "soldier"],
-            resetRoster: true,
-          },
-        },
-      }).status !== "allowed"
-    )
-      return;
-    if (run({ type: "dealGame", payload: {} }).status !== "allowed") return;
-    run({ type: "autoSecrets", payload: {} });
-    for (let id = 1; id <= 15; id += 1) {
-      run({ type: "claimSeat", payload: { playerId: String(id), name: `Игрок ${id}` } });
-    }
-    ports.router.go("/table");
-  };
+  const demoRoute = () => ports.router.go("demo");
   return (
     <section className={`host-card ${CARD} ${CARD_LINE}`}>
       {manualWarning(view)}
+      {bmrWarning(view)}
       <p className="label">{t("playerHandoff")}</p>
       <h1 className={CARD_TITLE}>
         {!everyoneNamed ? t("ui.names") : !seated ? t("ui.arrange") : t("ui.checkSecrets")}
@@ -1536,18 +1436,25 @@ export function DealCard({ view }: { view: TableView }) {
         <a className="btn btn--accent" href={ports.router.path(route)}>
           {step === "names" ? t("ui.handoff") : step === "seats" ? t("ui.seats") : t("ui.secrets")}
         </a>
-        <a className="btn" href={ports.router.path("seat")}>
-          {t("seats")}
-        </a>
-        <a className="btn" href={ports.router.path("secrets")}>
-          {t("secrets")}
-        </a>
+        {(
+          [
+            ["player", t("ui.handoff")],
+            ["seat", t("seats")],
+            ["secrets", t("secrets")],
+          ] as const
+        )
+          .filter(([target]) => target !== route)
+          .map(([target, label]) => (
+            <a className="btn" href={ports.router.path(target)} key={target}>
+              {label}
+            </a>
+          ))}
         <button
           className="btn btn--quiet"
           type="button"
           data-act="demo-15"
-          title="Демо: 15 игроков"
-          onClick={demo15}
+          title={t("ui.demoHint")}
+          onClick={demoRoute}
         >
           {t("demo")}
         </button>
@@ -1555,13 +1462,15 @@ export function DealCard({ view }: { view: TableView }) {
       {seated && errors.length ? (
         <Warn title={t("setupErrors")} bad>
           <ul className="mt-1 list-disc pl-4">
-            {errors.map((error) => (
-              <li key={error.code + error.message}>{error.message}</li>
-            ))}
+            {errors.map((error) => {
+              const localized = t(error.code);
+              return (
+                <li key={error.code + error.message}>
+                  {localized !== error.code ? localized : error.message}
+                </li>
+              );
+            })}
           </ul>
-          <a className="btn" href={ports.router.path("secrets")}>
-            {t("secrets")}
-          </a>
         </Warn>
       ) : null}
       {seated ? (
@@ -1589,7 +1498,9 @@ export function OverCard({ view }: { view: TableView }) {
       <h1 className={CARD_TITLE}>
         {winner ? t(winner.team === "good" ? "winnerGood" : "winnerEvil") : t("gameOver")}
       </h1>
-      <p className={CARD_TEXT}>{winner ? t("winReason." + winner.reason) : ""}</p>
+      <p className={CARD_TEXT} data-win-reason={winner?.reason ?? ""}>
+        {winner ? t(winReasonKey(state, winner)) : ""}
+      </p>
       <div className={INLINE}>
         {!state.reviewOpen ? (
           <button

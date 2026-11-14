@@ -4,17 +4,22 @@ import {
   ALL_ROLES,
   BMR_ALL,
   COMPOSITION,
+  ROLE_REMINDERS_RU,
   SNV_ALL,
+  SUPPORTED_ROLES,
   bagErrors,
   compositionFor,
+  isGoodRole,
+  randomBag,
   requiredBluffs,
   roleTeam,
 } from "../model/rules.ts";
 import { presetBag } from "../model/presets.ts";
-import { createGame, publicGameView } from "../model/state.ts";
-import { dealGame, setupErrors } from "./index.ts";
+import { createGame, publicGameView, validateState } from "../model/state.ts";
+import { dealGame, secretsErrors, setupErrors } from "./index.ts";
 import { parseScript } from "../model/scripts.ts";
-import type { Role, ScriptEdition } from "../model/types.ts";
+import type { RandomBag } from "../model/rules.ts";
+import type { Role, RoleId, ScriptEdition } from "../model/types.ts";
 
 // Setup table: every supported player count, every scenario modifier, the
 // Drunk and Lunatic masks, and the script limits. The sources are the pinned
@@ -37,7 +42,7 @@ function codes(errors: { code: string }[]) {
   return errors.map((error) => error.code);
 }
 
-function dealPreset(scriptId: string, count: number, variant = 0) {
+function presetSetup(scriptId: string, count: number, variant = 0) {
   const bag = preset(scriptId, count, variant);
   const state = createGame(count);
   state.script = {
@@ -59,10 +64,50 @@ function dealPreset(scriptId: string, count: number, variant = 0) {
     assignment[id] = bag.roles[index];
     state.players[id].name = "P" + id;
   });
+  return { state, bag, assignment };
+}
+
+function dealPreset(scriptId: string, count: number, variant = 0) {
+  const { state, bag, assignment } = presetSetup(scriptId, count, variant);
   assert.deepEqual(setupErrors(state), [], `${scriptId} ${count}/${variant}`);
   const result = dealGame(state, { assignment });
   assert.equal(result.ok, true, JSON.stringify(result));
   return { state, bag };
+}
+
+// A Trouble Brewing bag built from explicit roles, so a test can force the
+// exact seats a Storyteller question needs.
+function tbSetup(roles: RoleId[], masks: { drunkShownId?: RoleId } = {}) {
+  const count = roles.length;
+  const state = createGame(count);
+  state.script = {
+    id: "tb",
+    name: "Trouble Brewing",
+    edition: "tb",
+    source: "official",
+    roles: ALL_ROLES.slice(),
+  };
+  state.scriptId = "tb";
+  state.setup.count = count;
+  state.setup.roles = roles.slice();
+  state.setup.drunkShownId = masks.drunkShownId ?? null;
+  state.setup.bluffs = ALL_ROLES.filter(
+    (id) => isGoodRole(id) && !roles.includes(id) && id !== masks.drunkShownId,
+  ).slice(0, requiredBluffs(count));
+  const assignment: Record<string, string> = {};
+  state.order.forEach((id, index) => {
+    assignment[id] = roles[index]!;
+    state.players[id].name = "P" + id;
+  });
+  return { state, assignment };
+}
+
+function tbGame(roles: RoleId[], masks: { drunkShownId?: RoleId } = {}) {
+  const { state, assignment } = tbSetup(roles, masks);
+  assert.deepEqual(setupErrors(state), [], JSON.stringify(setupErrors(state)));
+  const result = dealGame(state, { assignment });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  return state;
 }
 
 test("every player count from 5 to 15 has a legal bag in every official scenario", () => {
@@ -152,13 +197,24 @@ test("an impossible modifier choice is rejected with its reason", () => {
   });
   assert.ok(codes(godfather).includes("godfather-minus"), JSON.stringify(godfather));
 
+  // The Vigormortis removes an Outsider only when the base composition has
+  // one: at eight players it removes one, at seven it changes nothing.
   const vigormortis = bagErrors({
-    count: 7,
-    roles: ["vigormortis", "cerenovus", "artist", "clockmaker", "dreamer", "flowergirl", "sage"],
-    bluffs: [],
+    count: 8,
+    roles: [
+      "vigormortis",
+      "cerenovus",
+      "artist",
+      "clockmaker",
+      "dreamer",
+      "flowergirl",
+      "sage",
+      "juggler",
+    ],
+    bluffs: ["oracle", "philosopher", "seamstress"],
     pool: SNV_ALL,
   });
-  assert.ok(codes(vigormortis).includes("vigormortis-minus"), JSON.stringify(vigormortis));
+  assert.deepEqual(vigormortis, [], JSON.stringify(codes(vigormortis)));
 });
 
 test("illegal bags are rejected with a stable reason", () => {
@@ -328,4 +384,258 @@ test("script limits reject mixed editions, unknown roles and short rosters", () 
     codes(setupErrors(manual)).includes("mixed-edition"),
     JSON.stringify(setupErrors(manual)),
   );
+});
+
+// Issue #171, TB1. The official Librarian example: the only Outsider is the
+// Recluse and the Storyteller makes the Recluse register as a Minion, so the
+// Librarian's zero is true.
+test("a Librarian may learn zero when every Outsider in play is a Recluse", () => {
+  const recluse = tbGame([
+    "librarian",
+    "chef",
+    "empath",
+    "monk",
+    "soldier",
+    "recluse",
+    "poisoner",
+    "imp",
+  ]);
+  recluse.setup.info.librarian = { zero: true, pair: [] };
+  assert.deepEqual(secretsErrors(recluse), [], JSON.stringify(secretsErrors(recluse)));
+
+  const saint = tbGame([
+    "librarian",
+    "chef",
+    "empath",
+    "monk",
+    "soldier",
+    "saint",
+    "poisoner",
+    "imp",
+  ]);
+  saint.setup.info.librarian = { zero: true, pair: [] };
+  assert.ok(codes(secretsErrors(saint)).includes("librarian-zero"));
+});
+
+// Issue #171, TB2. A Spy may register as a not-in-play Townsfolk and a Recluse
+// as a not-in-play Minion, so the shown character need not be in the bag.
+test("a first-night pair may show a character held by a registering Spy or Recluse", () => {
+  const spy = tbGame(["washerwoman", "chef", "empath", "monk", "soldier", "butler", "spy", "imp"]);
+  spy.setup.info.washerwoman = {
+    roleId: "ravenkeeper",
+    pair: [spy.order[6]!, spy.order[1]!],
+  };
+  assert.deepEqual(secretsErrors(spy), [], JSON.stringify(secretsErrors(spy)));
+
+  const recluse = tbGame([
+    "investigator",
+    "chef",
+    "empath",
+    "monk",
+    "soldier",
+    "recluse",
+    "poisoner",
+    "imp",
+  ]);
+  recluse.setup.info.investigator = {
+    roleId: "scarletwoman",
+    pair: [recluse.order[5]!, recluse.order[1]!],
+  };
+  assert.deepEqual(secretsErrors(recluse), [], JSON.stringify(secretsErrors(recluse)));
+
+  // Without the registering character the shown role must still be in play.
+  const plain = tbGame([
+    "washerwoman",
+    "chef",
+    "empath",
+    "monk",
+    "soldier",
+    "butler",
+    "poisoner",
+    "imp",
+  ]);
+  plain.setup.info.washerwoman = {
+    roleId: "ravenkeeper",
+    pair: [plain.order[1]!, plain.order[2]!],
+  };
+  assert.ok(codes(secretsErrors(plain)).includes("info-inplay-washerwoman"));
+});
+
+// Issue #171, TB8. The Drunk's information is false, so a Drunk shown the
+// Librarian may be told that zero Outsiders are in play.
+test("a Drunk shown the Librarian may record the zero Outsiders answer", () => {
+  const state = tbGame(
+    ["drunk", "chef", "empath", "monk", "soldier", "undertaker", "poisoner", "imp"],
+    { drunkShownId: "librarian" },
+  );
+  state.setup.info.librarian = { zero: true, pair: [] };
+  assert.deepEqual(secretsErrors(state), [], JSON.stringify(secretsErrors(state)));
+});
+
+// Issue #171, SET2. A second modifier may already account for the Outsider a
+// modifier removes, so legality is the count against compositionFor.
+test("mixed setup modifiers are legal when the counts match the composition", () => {
+  const pool = [...ALL_ROLES, ...BMR_ALL, ...SNV_ALL];
+  const cases: { count: number; roles: RoleId[]; godfatherOutsider?: 1 | -1 }[] = [
+    {
+      count: 7,
+      roles: [
+        "godfather",
+        "fanggu",
+        "chambermaid",
+        "courtier",
+        "exorcist",
+        "clockmaker",
+        "dreamer",
+      ],
+      godfatherOutsider: -1,
+    },
+    {
+      count: 7,
+      roles: ["baron", "vigormortis", "chambermaid", "courtier", "exorcist", "clockmaker", "goon"],
+    },
+    {
+      count: 10,
+      roles: [
+        "baron",
+        "godfather",
+        "po",
+        "chambermaid",
+        "courtier",
+        "exorcist",
+        "fool",
+        "gambler",
+        "gossip",
+        "goon",
+      ],
+      godfatherOutsider: -1,
+    },
+    {
+      count: 7,
+      roles: ["godfather", "vigormortis", "chambermaid", "courtier", "exorcist", "fool", "gambler"],
+    },
+  ];
+  for (const { count, roles, godfatherOutsider = 1 } of cases) {
+    const errors = bagErrors({
+      count,
+      roles,
+      bluffs: pool.filter((id) => isGoodRole(id) && !roles.includes(id)).slice(0, 3),
+      pool,
+      godfatherOutsider,
+    });
+    assert.deepEqual(errors, [], `${count}: ${JSON.stringify(codes(errors))}`);
+  }
+});
+
+// Issue #171, SET12. Modifiers can ask for more roles than the table has, and
+// the host must see that instead of an "0 of -1" counter.
+test("an impossible modifier combination reports a clear reason", () => {
+  const pool = [...ALL_ROLES, ...BMR_ALL, ...SNV_ALL];
+  // Baron +2 and Fang Gu +1 and Godfather +1 at five players need more
+  // Townsfolk than the base row has.
+  const roles: RoleId[] = ["baron", "godfather", "fanggu", "chambermaid", "courtier"];
+  const errors = bagErrors({
+    count: 5,
+    roles,
+    bluffs: [],
+    pool,
+  });
+  assert.ok(codes(errors).includes("composition-impossible"), JSON.stringify(codes(errors)));
+  assert.equal(
+    errors.some((error) => error.message.includes("-1")),
+    false,
+    JSON.stringify(errors),
+  );
+});
+
+// Issue #171, SET3. The deal is a permutation of the bag over the seat order.
+test("a deal rejects an assignment that is not a permutation of the bag", () => {
+  const roles: RoleId[] = ["chef", "empath", "monk", "poisoner", "imp"];
+  const { state, assignment } = tbSetup(roles);
+  assert.equal(dealGame(state, { assignment }).ok, true);
+
+  const duplicate = { ...assignment, [state.order[1]!]: "chef" };
+  assert.equal(dealGame(state, { assignment: duplicate }).ok, false);
+
+  const missing = { ...assignment };
+  delete missing[state.order[4]!];
+  assert.equal(dealGame(state, { assignment: missing }).ok, false);
+
+  const notInBag = { ...assignment, [state.order[0]!]: "soldier" };
+  assert.equal(dealGame(state, { assignment: notInBag }).ok, false);
+});
+
+// Issue #171, SET4. A new deal starts from a clean slate.
+test("a re-deal clears the old gossip, grandchild, corrections and notes", () => {
+  const { state, bag } = dealPreset("bmr", 7, 2);
+  state.gossip = { truth: true, day: 1 };
+  state.setup.grandmotherId = state.order[1]!;
+  state.corrections.push({ at: "2026-11-14T00:00:00.000Z", reason: "old" });
+  state.notes = "old notes";
+  const assignment: Record<string, string> = {};
+  state.order.forEach((id, index) => {
+    assignment[id] = bag.roles[index]!;
+  });
+  const result = dealGame(state, { assignment });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(state.gossip, null);
+  assert.equal(state.setup.grandmotherId, null);
+  assert.deepEqual(state.corrections, []);
+  assert.equal(state.notes, "");
+});
+
+// Issue #171, SET5. The bag screen applies the direction the bag was composed
+// for, so the random bag must return it.
+test("a random bag returns the Godfather direction it was composed for", () => {
+  let composed: RandomBag | null = null;
+  for (let step = 1; step < 100 && !composed; step += 1) {
+    const bag = randomBag(8, () => step / 100, BMR_ALL, { godfatherOutsider: -1 });
+    if (bag.roles.includes("godfather")) composed = bag;
+  }
+  assert.ok(composed, "a random Bad Moon Rising bag with the Godfather");
+  assert.equal(composed.godfatherOutsider, -1);
+
+  const withoutGodfather = randomBag(
+    8,
+    Math.random,
+    BMR_ALL.filter((id) => id !== "godfather"),
+    {
+      godfatherOutsider: -1,
+    },
+  );
+  assert.equal(withoutGodfather.godfatherOutsider, 1);
+});
+
+// Issue #171, SET10. The Secrets screen lists the host reminder checklist for
+// every role in the bag, so each official role needs its tokens.
+test("every official role has a host reminder for the secrets screen", () => {
+  for (const id of SUPPORTED_ROLES) {
+    assert.ok(Array.isArray(ROLE_REMINDERS_RU[id]), id + " has no reminder list");
+  }
+  for (const id of [...BMR_ALL, ...SNV_ALL]) {
+    assert.ok(ROLE_REMINDERS_RU[id]!.length > 0, id + " has no reminder token");
+  }
+});
+
+// Issue #171, SET6. A missing Lunatic mask cannot be shown at the table.
+test("a Lunatic without a shown Demon mask is illegal", () => {
+  const bmr7 = preset("bmr", 7, 2);
+  assert.ok(bmr7.roles.includes("lunatic"));
+  const errors = bagErrors({
+    count: 7,
+    roles: bmr7.roles,
+    bluffs: bmr7.bluffs,
+    drunkShownId: bmr7.drunkShownId,
+    pool: BMR_ALL,
+  });
+  assert.ok(codes(errors).includes("lunatic-shown"), JSON.stringify(codes(errors)));
+
+  const { state, assignment } = presetSetup("bmr", 7, 2);
+  state.setup.lunaticShownId = null;
+  assert.ok(
+    validateState(state).some((error) => /Lunatic/.test(error)),
+    JSON.stringify(validateState(state)),
+  );
+  const result = dealGame(state, { assignment });
+  assert.equal(result.ok, false, JSON.stringify(result));
 });

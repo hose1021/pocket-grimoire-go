@@ -6,9 +6,9 @@ import type { Player, RoleId, Team } from "../../core/model/types.ts";
 import type { InfoRoleId, SetupInfoPatch } from "../../core/commands/contracts.ts";
 import { secretsProjection } from "../../application/read-models/table.ts";
 import {
-  ALL_ROLES,
   ROLE_REMINDERS_RU,
   isBmrScript,
+  isManualScript,
   isSnvScript,
   roleLabel,
   roleTeam,
@@ -17,6 +17,8 @@ import { roleSupportEntries, scriptSupport, type SupportLevel } from "../../core
 import { SetupShell } from "../components/setup-shell.tsx";
 import { useShellPorts } from "../ports.ts";
 import { useGame } from "../store/use-game.ts";
+import { infoRoleChoices, librarianZeroLegal, reminderRows } from "./secrets-options.ts";
+import { commandRejectionText, setupProblemText } from "./setup-messages.ts";
 
 const INFO_ROLES: Array<[RoleId, Team]> = [
   ["washerwoman", "townsfolk"],
@@ -105,11 +107,7 @@ export function SecretsScreen() {
   const startNight = () => {
     const result = ports.commands.startNight();
     if (result.status !== "allowed") {
-      const message =
-        result.status === "rejected"
-          ? result.errors?.join("\n") || result.reason || t("setupErrors")
-          : result.reason || t("setupErrors");
-      window.alert(message);
+      window.alert(commandRejectionText(result) || t("setupErrors"));
       return;
     }
     ports.router.go("/table");
@@ -138,8 +136,10 @@ export function SecretsScreen() {
       >
         <b>{t("setupErrors")}</b>
         <ul className="m-0 grid list-disc gap-0.5 pl-4">
-          {errors.map((error) => (
-            <li key={error.code}>{error.message}</li>
+          {errors.map((error, index) => (
+            <li key={error.code + ":" + index}>
+              {setupProblemText(error, { roleLabel: (id) => roleOf(id).name })}
+            </li>
           ))}
         </ul>
       </div>
@@ -182,7 +182,35 @@ export function SecretsScreen() {
     </div>
   );
 
-  if (isBmrScript(state.script)) {
+  // The checklist lists every role in play that has Storyteller reminders, so
+  // Bad Moon Rising and Sects & Violets show theirs like Trouble Brewing does.
+  const reminders = reminderRows(
+    state.setup.roles || [],
+    ROLE_REMINDERS_RU,
+    (id) => roleOf(id).name,
+  );
+  const remindersMarkup = reminders.length ? (
+    <section className={CARD} aria-labelledby="secrets-reminders">
+      {sectionHead("", "secrets-reminders", t("remindersToPlace"), null)}
+      <ul className="secrets-reminders m-0 mt-2 grid list-none gap-0 p-0" data-reminders>
+        {reminders.map((row) => (
+          <li
+            className="flex flex-wrap justify-between gap-x-3 border-b border-edge py-1.5 text-[12.5px]"
+            key={row.roleId}
+          >
+            <b className="font-medium text-parchment">{row.name}</b>
+            <span className="text-muted">{row.tokens.join(" · ")}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  ) : null;
+
+  // A manual pool is resolved by the host, so it gets the manual screen even
+  // when it contains BMR or S&V roles.
+  const manual = isManualScript(state.script);
+
+  if (!manual && isBmrScript(state.script)) {
     const has = (roleId: RoleId) => (state.setup.roles || []).includes(roleId);
     const lunatic = state.setup.lunaticShownId ? roleLabel(state.setup.lunaticShownId) : null;
     return (
@@ -212,6 +240,7 @@ export function SecretsScreen() {
             </div>
           </div>
           {supportSection(state.setup.roles || [])}
+          {remindersMarkup}
           {statusMarkup()}
           <div className="flex flex-wrap items-center gap-2">
             <a className="btn" href={ports.router.path("bag")}>
@@ -232,7 +261,7 @@ export function SecretsScreen() {
     );
   }
 
-  if (isSnvScript(state.script)) {
+  if (!manual && isSnvScript(state.script)) {
     const has = (roleId: RoleId) => (state.setup.roles || []).includes(roleId);
     const twin = state.setup.evilTwinGoodId ? roleLabel(state.setup.evilTwinGoodId) : null;
     return (
@@ -248,6 +277,7 @@ export function SecretsScreen() {
             <span className={LABEL}>{t("evilTwinGood")}</span>
             <p className="m-0 text-[13px]">{has("eviltwin") ? twin || t("none") : t("none")}</p>
           </div>
+          {remindersMarkup}
           {statusMarkup()}
           <div className="flex flex-wrap items-center gap-2">
             <a className="btn" href={ports.router.path("bag")}>
@@ -343,15 +373,24 @@ export function SecretsScreen() {
 
   const infoEditor = (roleId: RoleId, team: Team, label: string, forDrunk = false) => {
     if (!forDrunk && !realHas(roleId)) return null;
-    const roleOptions = forDrunk
-      ? ALL_ROLES.filter((id) => roleTeam(id) === team)
-      : players
-          .filter((player) => roleTeam(player.roleId ?? "") === team)
-          .map((player) => player.roleId ?? "");
-    const zero =
-      !forDrunk &&
-      roleId === "librarian" &&
-      !players.some((player) => roleTeam(player.roleId ?? "") === "outsider");
+    const held = players.map((player) => player.roleId).filter((id): id is RoleId => Boolean(id));
+    // A Spy may register as a Townsfolk or an Outsider and a Recluse as a
+    // Minion, so their not-in-play characters are legal shown answers.
+    const registering = team === "minion" ? held.includes("recluse") : held.includes("spy");
+    const roleOptions = infoRoleChoices({
+      team,
+      forDrunk,
+      held,
+      scriptRoles: state.script?.roles ?? [],
+      registering,
+    });
+    // The zero is a shaped answer only the Librarian gives, and a Drunk shown
+    // the Librarian may be told it as false information. A stored zero stays
+    // editable even if the game changed, so the host can correct it.
+    const stored = state.setup.info[roleId as InfoRoleId];
+    const zeroInfo = Boolean(stored && "zero" in stored);
+    const zeroAllowed =
+      roleId === "librarian" && (forDrunk || zeroInfo || librarianZeroLegal(players));
     const infoRoleId = roleOfInfo(roleId);
     return (
       <div className={INFO} key={roleId}>
@@ -359,7 +398,24 @@ export function SecretsScreen() {
           <h3 className="m-0 font-role text-[17px] leading-tight text-parchment">{label}</h3>
           <span className={TAG}>{forDrunk ? t("ui.drunk") : t("infoPair")}</span>
         </div>
-        {zero ? (
+        {zeroAllowed ? (
+          <label className="flex items-center gap-2 text-[12px]">
+            <input
+              className="size-4 accent-accent"
+              type="checkbox"
+              data-info-zero={roleId}
+              checked={zeroInfo}
+              onChange={(event) =>
+                updateInfo(
+                  roleId as "washerwoman" | "librarian" | "investigator",
+                  event.target.checked ? { zero: true } : { roleId: "", pair: ["", ""] },
+                )
+              }
+            />
+            <span>{t("zeroOutsiders")}</span>
+          </label>
+        ) : null}
+        {zeroInfo ? (
           <p className={NOTE}>{t("zeroOutsiders")}.</p>
         ) : (
           <div className={GRID}>
@@ -431,14 +487,6 @@ export function SecretsScreen() {
   const claimed = players.filter((player) => player.claimed).length;
   const everyoneNamed = claimed === players.length;
   const seated = state.phase === "seat";
-  const reminders: Array<[string, string[]]> = [];
-  const seen = new Set<string>();
-  for (const roleId of state.setup.roles || []) {
-    if (seen.has(roleId)) continue;
-    seen.add(roleId);
-    const tokens = (ROLE_REMINDERS_RU as Record<string, string[]>)[roleId] || [];
-    if (tokens.length) reminders.push([roleOf(roleId).name, tokens]);
-  }
 
   return (
     <SetupShell step="secrets">
@@ -456,20 +504,7 @@ export function SecretsScreen() {
               </h1>
               <p className="mt-1 text-[11px] leading-relaxed text-muted">{t("secretsIntro")}</p>
             </div>
-            <section className={CARD} aria-labelledby="secrets-reminders">
-              {sectionHead("", "secrets-reminders", t("remindersToPlace"), null)}
-              <ul className="secrets-reminders m-0 mt-2 grid list-none gap-0 p-0">
-                {reminders.map(([name, tokens]) => (
-                  <li
-                    className="flex flex-wrap justify-between gap-x-3 border-b border-edge py-1.5 text-[12.5px]"
-                    key={name}
-                  >
-                    <b className="font-medium text-parchment">{name}</b>
-                    <span className="text-muted">{tokens.join(" · ")}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            {remindersMarkup}
           </aside>
 
           <section className="grid min-w-0 content-start gap-3 p-3.5 max-lg:border-b max-lg:border-edge">
