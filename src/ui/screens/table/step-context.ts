@@ -49,6 +49,18 @@ export function stepContext(state: GameState, drafts: TableDrafts, step: NightSt
   const redirect = drafts.redirects.get(draftKey);
   const targetsMayor = Boolean(mayorRedirectNeeded(state, step, selected[0] || "") && selected[0]);
   const needsRedirect = targetsMayor && !redirect;
+  // A Courtier, Gambler, Cerenovus, Philosopher or Pit-Hag names a character;
+  // completing empty would spend the ability or create no token.
+  const needsRole =
+    Array.isArray(step.roleChoices) &&
+    step.roleChoices.length > 0 &&
+    !drafts.bmrRoles.get(draftKey);
+  // The Sailor and the Innkeeper always make one player drunk; an empty pick
+  // must not silently become the first target.
+  const needsDrunk =
+    (step.roleId === "sailor" || step.roleId === "innkeeper") &&
+    !targetsIncomplete &&
+    !drafts.bmrDrunk.get(draftKey);
   const poisonChoices =
     step.roleId === "vigormortis"
       ? poisonChoicesProjection(state, drafts.bmrDeaths.get(draftKey) || [])
@@ -82,6 +94,8 @@ export function stepContext(state: GameState, drafts: TableDrafts, step: NightSt
     blockers: stepBlockers({
       needsSetup: Boolean(info.missing),
       targetsIncomplete,
+      needsRole,
+      needsDrunk,
       needsGiven: Boolean(info.needsChoice && !given && !targetsIncomplete),
       needsRedirect,
     }),

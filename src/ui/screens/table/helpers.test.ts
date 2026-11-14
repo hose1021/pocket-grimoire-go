@@ -11,15 +11,23 @@ import {
   startNight,
 } from "../../../core/engine/index.ts";
 import { createGame } from "../../../core/model/state.ts";
-import type { Player } from "../../../core/model/types.ts";
+import type { NightStep, Player } from "../../../core/model/types.ts";
 import type { PreviewOutcome } from "../../ports.ts";
 import {
   applyGiven,
+  blockerText,
   consequencesOf,
   defaultCorrectionValue,
   displayName,
+  infoText,
+  jugglerGuessingDay,
   logConsequence,
+  nextSelection,
+  normalizeJugglerGuesses,
+  redirectChoiceValue,
   rejectionOf,
+  rejectionText,
+  shownCardText,
   stepBlockers,
   stepTitle,
   timerText,
@@ -138,6 +146,174 @@ test("stepBlockers lists every unanswered mandatory decision in priority order",
     }),
     [],
   );
+});
+
+test("stepBlockers reports an unanswered role choice and an unanswered drunk pick", () => {
+  assert.deepEqual(
+    stepBlockers({
+      needsSetup: false,
+      targetsIncomplete: false,
+      needsGiven: false,
+      needsRedirect: false,
+      needsRole: true,
+      needsDrunk: true,
+    }),
+    ["role", "drunk"],
+  );
+  assert.deepEqual(
+    stepBlockers({
+      needsSetup: false,
+      targetsIncomplete: true,
+      needsGiven: true,
+      needsRedirect: true,
+      needsRole: true,
+      needsDrunk: false,
+    }),
+    ["targets", "role", "given", "redirect"],
+  );
+});
+
+test("infoText prefers the computed note over the static note key", () => {
+  const game = createGame(5);
+  const step = { key: "n2-imp", roleId: "imp", noteKey: "note.bmr.po" } as NightStep;
+  assert.equal(
+    infoText(game, step, { kind: "note", text: "Lunatic: A; chose B" }, () => null, t),
+    "Lunatic: A; chose B",
+  );
+  assert.equal(
+    infoText(game, step, { kind: "note", text: "" }, () => null, t),
+    "note.bmr.po",
+  );
+  assert.equal(
+    infoText(game, step, { kind: "note" }, () => null, t),
+    "note.bmr.po",
+  );
+  const staticStep = {
+    key: "n2-demonchange",
+    system: "demonchange",
+    note: "Demon changed.",
+    noteKey: "note.demonChanged",
+  } as NightStep;
+  assert.equal(
+    infoText(game, staticStep, { kind: "note", text: "Demon changed." }, () => null, t),
+    "note.demonChanged",
+    "a computed copy of the static note keeps the localized key",
+  );
+});
+
+test("a rejected command renders the localized error code, not the engine message", () => {
+  const localized = (key: string): string => (key === "error.15" ? "Localized" : key);
+  assert.equal(rejectionText({ text: "Русский текст", code: "error.15" }, localized), "Localized");
+  assert.equal(
+    rejectionText({ text: "Русский текст", code: "error.99" }, localized),
+    "Русский текст",
+  );
+  assert.equal(rejectionText({ text: "", code: null }, localized), "setupErrors");
+  assert.equal(rejectionText(null, localized), "");
+});
+
+test("an impaired actor card shows the chosen answer, then the template", () => {
+  const game = createGame(5);
+  game.players["1"]!.roleId = "chef";
+  const step = { key: "n1-chef", roleId: "chef", actorId: "1" } as NightStep;
+  const roles = (id: string) => (id === "chef" ? ({ id, name: "Chef" } as never) : null);
+  assert.equal(
+    shownCardText(
+      game,
+      step,
+      { kind: "number", value: 1, needsChoice: true },
+      { kind: "number", value: 2, needsChoice: false },
+      "",
+      true,
+      roles,
+      t,
+    ),
+    "numberResult:2",
+    "the selected given answer is the recorded information",
+  );
+  assert.equal(
+    shownCardText(
+      game,
+      step,
+      { kind: "number", value: 1, needsChoice: true },
+      undefined,
+      "1 · Yes",
+      true,
+      roles,
+      t,
+    ),
+    "1 · Yes",
+  );
+  assert.equal(
+    shownCardText(
+      game,
+      step,
+      { kind: "number", value: 1, needsChoice: true },
+      undefined,
+      "",
+      true,
+      roles,
+      t,
+    ),
+    "ui.notSet",
+  );
+  assert.equal(
+    shownCardText(game, step, { kind: "number", value: 1 }, undefined, "", false, roles, t),
+    "numberResult:1",
+  );
+});
+
+test("the seat picker collects every target a step allows", () => {
+  assert.deepEqual(nextSelection([], "1", 1), ["1"]);
+  assert.deepEqual(nextSelection(["1"], "1", 1), []);
+  assert.deepEqual(nextSelection(["1", "2"], "3", 2), ["2", "3"]);
+  assert.deepEqual(nextSelection([], "1", 3), ["1"]);
+  assert.deepEqual(nextSelection(["1", "2", "3"], "4", 3), ["2", "3", "4"]);
+  assert.deepEqual(nextSelection(["1", "2"], "1", 3), ["2"]);
+});
+
+test("the Mayor select has no value for an unanswered redirect", () => {
+  assert.equal(redirectChoiceValue(undefined), "");
+  assert.equal(redirectChoiceValue(null), "");
+  assert.equal(redirectChoiceValue("none"), "none");
+  assert.equal(redirectChoiceValue("2"), "2");
+});
+
+test("the Juggler guesses read from both the pair list and the legacy map", () => {
+  assert.deepEqual(
+    normalizeJugglerGuesses([
+      { playerId: "2", roleId: "clockmaker" },
+      { playerId: "2", roleId: "dreamer" },
+    ]),
+    [
+      { playerId: "2", roleId: "clockmaker" },
+      { playerId: "2", roleId: "dreamer" },
+    ],
+    "the same player may be guessed twice",
+  );
+  assert.deepEqual(normalizeJugglerGuesses({ "2": "clockmaker", "6": "fanggu" }), [
+    { playerId: "2", roleId: "clockmaker" },
+    { playerId: "6", roleId: "fanggu" },
+  ]);
+  assert.deepEqual(normalizeJugglerGuesses([{ playerId: "2" }, null, { roleId: "chef" }]), []);
+  assert.deepEqual(normalizeJugglerGuesses(null), []);
+  assert.deepEqual(normalizeJugglerGuesses("x"), []);
+});
+
+test("the Juggler panel follows the Juggler's own day, not day one", () => {
+  assert.equal(jugglerGuessingDay(4, 4, true), 4, "a stored Juggler day wins");
+  assert.equal(jugglerGuessingDay(4, 2, false), 2, "a stored earlier day is the guess day");
+  assert.equal(jugglerGuessingDay(3, null, false), 1, "a dealt Juggler starts on day one");
+  assert.equal(jugglerGuessingDay(3, undefined, true), 3, "a created Juggler starts today");
+});
+
+test("every step blocker has its own localized sentence", () => {
+  assert.equal(blockerText("targets", 2, t), "ui.blockTargets:2");
+  assert.equal(blockerText("secrets", 1, t), "ui.blockSecrets");
+  assert.equal(blockerText("given", 1, t), "ui.blockGiven");
+  assert.equal(blockerText("redirect", 1, t), "ui.blockRedirect");
+  assert.equal(blockerText("role", 1, t), "ui.blockRole");
+  assert.equal(blockerText("drunk", 1, t), "ui.blockDrunk");
 });
 
 test("rejectionOf reports the engine reason for a rejected or Storyteller-choice command", () => {

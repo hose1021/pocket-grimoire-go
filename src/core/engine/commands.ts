@@ -70,13 +70,15 @@ import {
   recordVirginNomination,
   recordVotes,
   recoverClaim,
+  reportJugglerGuesses,
   resetVotes,
+  tinkerDeath,
   useSlayer,
 } from "./day.ts";
 import { autoSecrets, claimSeat, dealGame } from "./setup.ts";
 import { manualCorrection } from "./corrections.ts";
 import { recordBmrOutcome, resolveSuspendedPukkaDeaths, resurrectPlayer } from "./bmr.ts";
-import { recordSvOutcome } from "./sv.ts";
+import { recordKlutzChoice, recordSvOutcome } from "./sv.ts";
 import { chooseDemonHeir, setWinner } from "./death.ts";
 
 export const RULESET_VERSION = "tb-bmr-snv-2026-11-10";
@@ -216,6 +218,14 @@ function completeNightStep(state: GameState, payload: CommandPayloads["completeN
   return result;
 }
 
+function applyJugglerGuess(state: GameState, payload: CommandPayloads["jugglerGuess"]) {
+  if (Array.isArray(payload.guesses)) return reportJugglerGuesses(state, payload.guesses);
+  if (typeof payload.playerId !== "string" || typeof payload.roleId !== "string") {
+    return { ok: false, errorCode: "error.39", error: "Передайте список догадок Жонглёра." };
+  }
+  return jugglerGuess(state, payload.playerId, payload.roleId);
+}
+
 const INFO_ROLES = new Set(["washerwoman", "librarian", "investigator"]);
 
 /**
@@ -249,16 +259,18 @@ export function startGame(
 }
 
 function normalizeScript(script: unknown) {
-  if (!script || typeof script !== "object") return { ok: false, error: "Некорректный сценарий." };
+  if (!script || typeof script !== "object")
+    return { ok: false, errorCode: "error.script", error: "Некорректный сценарий." };
   const value = script as Record<string, unknown>;
-  if (typeof value.id !== "string" || !value.id) return { ok: false, error: "У сценария нет id." };
+  if (typeof value.id !== "string" || !value.id)
+    return { ok: false, errorCode: "error.script", error: "У сценария нет id." };
   if (typeof value.name !== "string" || !value.name)
-    return { ok: false, error: "У сценария нет названия." };
+    return { ok: false, errorCode: "error.script", error: "У сценария нет названия." };
   if (!Array.isArray(value.roles)) {
-    return { ok: false, error: "В сценарии нет списка ролей." };
+    return { ok: false, errorCode: "error.roles", error: "В сценарии нет списка ролей." };
   }
   if (!value.roles.length && value.edition !== "custom") {
-    return { ok: false, error: "В сценарии нет ролей." };
+    return { ok: false, errorCode: "error.roles", error: "В сценарии нет ролей." };
   }
   const unique: string[] = [];
   for (const id of value.roles) {
@@ -267,7 +279,11 @@ function normalizeScript(script: unknown) {
       !isSupportedRole(id) ||
       (roleTeam(id) as string) === "traveller"
     ) {
-      return { ok: false, error: "Неподдерживаемая роль в сценарии: " + id };
+      return {
+        ok: false,
+        errorCode: "error.unknown",
+        error: "Неподдерживаемая роль в сценарии: " + id,
+      };
     }
     if (!unique.includes(id)) unique.push(id);
   }
@@ -382,7 +398,8 @@ function bagUpdate(state: GameState, payload: CommandPayloads["bagUpdate"]) {
   if (patch.script) {
     const normalized = normalizeScript(patch.script);
     if (!normalized.ok) return normalized;
-    if (!normalized.script) return { ok: false, error: "Некорректный сценарий." };
+    if (!normalized.script)
+      return { ok: false, errorCode: "error.script", error: "Некорректный сценарий." };
     state.script = normalized.script;
     state.scriptId = normalized.script.id;
   }
@@ -405,19 +422,35 @@ function bagUpdate(state: GameState, payload: CommandPayloads["bagUpdate"]) {
 
   const scriptRoles = (state.script && state.script.roles) || [];
   if (patch.roles != null) {
-    if (!Array.isArray(patch.roles)) return { ok: false, error: "Некорректный список ролей." };
+    if (!Array.isArray(patch.roles))
+      return { ok: false, errorCode: "error.roles", error: "Некорректный список ролей." };
     for (const id of patch.roles) {
-      if (!isSupportedRole(id) || !scriptRoles.includes(id)) {
-        return { ok: false, error: "Роль не входит в сценарий: " + id };
+      if (!isSupportedRole(id)) {
+        return { ok: false, errorCode: "error.unknown", error: "Неизвестная роль: " + id };
+      }
+      if (!scriptRoles.includes(id)) {
+        return {
+          ok: false,
+          errorCode: "error.outside-script",
+          error: "Роль не входит в сценарий: " + id,
+        };
       }
     }
     state.setup.roles = patch.roles.slice();
   }
   if (patch.bluffs != null) {
-    if (!Array.isArray(patch.bluffs)) return { ok: false, error: "Некорректный список блефов." };
+    if (!Array.isArray(patch.bluffs))
+      return { ok: false, errorCode: "error.roles", error: "Некорректный список блефов." };
     for (const id of patch.bluffs) {
-      if (!isSupportedRole(id) || !scriptRoles.includes(id)) {
-        return { ok: false, error: "Блеф не входит в сценарий: " + id };
+      if (!isSupportedRole(id)) {
+        return { ok: false, errorCode: "error.unknown", error: "Неизвестная роль: " + id };
+      }
+      if (!scriptRoles.includes(id)) {
+        return {
+          ok: false,
+          errorCode: "error.bluffs-outside-script",
+          error: "Блеф не входит в сценарий: " + id,
+        };
       }
     }
     state.setup.bluffs = patch.bluffs.slice();
@@ -434,14 +467,18 @@ function bagUpdate(state: GameState, payload: CommandPayloads["bagUpdate"]) {
 
 function setOrder(state: GameState, payload: CommandPayloads["setOrder"]) {
   const order = Array.isArray(payload.order) ? payload.order.map(String) : null;
-  if (!order) return { ok: false, error: "Некорректный порядок мест." };
+  if (!order) return { ok: false, errorCode: "error.order", error: "Некорректный порядок мест." };
   const ids = Object.keys(state.players);
   if (
     order.length !== ids.length ||
     new Set(order).size !== order.length ||
     order.some((id) => !state.players[id])
   ) {
-    return { ok: false, error: "Порядок мест должен содержать каждого игрока один раз." };
+    return {
+      ok: false,
+      errorCode: "error.order",
+      error: "Порядок мест должен содержать каждого игрока один раз.",
+    };
   }
   state.order = order;
   // `seat` mirrors the order: validateState and importGame require it, so an
@@ -460,9 +497,13 @@ function setHerring(state: GameState, payload: CommandPayloads["setHerring"]) {
     return { ok: true };
   }
   const player = playerById(state, payload.playerId);
-  if (!player) return { ok: false, error: "Игрок не найден." };
+  if (!player) return { ok: false, errorCode: "error.1", error: "Игрок не найден." };
   if (realTeamOf(player) !== "good")
-    return { ok: false, error: "Красная селёдка должна быть добрым игроком." };
+    return {
+      ok: false,
+      errorCode: "error.herring-team",
+      error: "Красная селёдка должна быть добрым игроком.",
+    };
   state.setup.herringId = player.id;
   return { ok: true };
 }
@@ -624,10 +665,12 @@ const COMMANDS = {
       ),
   },
   gossipStatement: { apply: (state, payload) => gossipStatement(state, Boolean(payload.truth)) },
-  jugglerGuess: {
-    apply: (state, payload) => jugglerGuess(state, payload.playerId, payload.roleId),
-  },
+  jugglerGuess: { apply: (state, payload) => applyJugglerGuess(state, payload) },
   moonchildChoice: { apply: (state, payload) => moonchildChoice(state, payload.targetId) },
+  recordKlutzChoice: {
+    apply: (state, payload) => recordKlutzChoice(state, payload.targetId),
+  },
+  tinkerDeath: { apply: (state, payload) => tinkerDeath(state, payload.playerId) },
   recoverClaim: {
     apply: (state, payload) => recoverClaim(state, payload.playerId, payload.reason),
   },

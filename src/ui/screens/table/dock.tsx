@@ -6,10 +6,17 @@ import type { ReactNode } from "react";
 import { livingPlayers, orderedPlayers, playerById } from "../../../core/model/state.ts";
 import { isManualScript } from "../../../core/model/rules.ts";
 import { tableProjection } from "../../../application/read-models/table.ts";
-import { displayName, previewIdentity, stepTitle, timerText } from "./helpers.ts";
+import {
+  blockerText,
+  displayName,
+  guideForStep,
+  previewIdentity,
+  rejectionOf,
+  stepTitle,
+  timerText,
+} from "./helpers.ts";
 import { ConsequenceList } from "./parts.tsx";
 import { stepContext } from "./step-context.ts";
-import type { StepBlocker } from "./helpers.ts";
 import type { TableView } from "./view.ts";
 
 const DISABLED_ACTION =
@@ -20,17 +27,6 @@ const DANGER_ACTION = `btn min-h-11 !justify-center !border-table-danger !bg-tab
 const QUIET_ACTION = "btn btn--quiet min-h-11 !justify-center";
 const ICON_BUTTON =
   "inline-flex size-11 shrink-0 items-center justify-center rounded-sm border border-edge-2 text-muted";
-
-function blockerText(
-  blocker: StepBlocker,
-  minTargets: number,
-  t: TableView["ports"]["strings"]["t"],
-) {
-  if (blocker === "targets") return t("ui.blockTargets", { count: minTargets });
-  if (blocker === "secrets") return t("ui.blockSecrets");
-  if (blocker === "given") return t("ui.blockGiven");
-  return t("ui.blockRedirect");
-}
 
 export function TableDock({ view }: { view: TableView }) {
   const { state, ports, drafts, actions, viewVersion } = view;
@@ -57,14 +53,31 @@ export function TableDock({ view }: { view: TableView }) {
   );
   const target = state.phase === "day" ? playerById(state, drafts.executeTarget) : null;
   const canExecute =
-    state.phase === "day" && Boolean(target?.alive) && !state.day.execution && !state.day.ended;
+    state.phase === "day" &&
+    Boolean(target?.alive) &&
+    !state.day.execution &&
+    !state.day.ended &&
+    !state.winner;
+  const executePreview = useMemo(
+    () =>
+      canExecute && drafts.executeTarget
+        ? actions.preview({
+            type: "executeByDecision",
+            payload: {
+              playerId: drafts.executeTarget,
+              options: { survives: drafts.executeSurvives },
+            },
+          })
+        : null,
+    [actions.preview, canExecute, drafts.executeTarget, drafts.executeSurvives, viewVersion],
+  );
   const executed = state.day.execution ? playerById(state, state.day.execution.playerId) : null;
   const saintWarning =
     state.phase === "day" && !state.day.execution && !state.day.ended && target?.roleId === "saint";
   const registeredDead = orderedPlayers(state).filter(
     (player) => player.alive && player.registeredDead,
   );
-  const guide = step ? ports.guidance.for(step) : null;
+  const guide = step ? guideForStep(t, ports.guidance.for, state, step) : null;
   const outcome = state.phase === "night" ? (step ? stepPreview : nightEndPreview) : dayEndPreview;
   const dockStep =
     state.phase === "night"
@@ -241,6 +254,20 @@ export function TableDock({ view }: { view: TableView }) {
             targets={context ? context.selected : []}
             state={state}
             ports={ports}
+            rejectionCopy={
+              state.phase === "day" && rejectionOf(outcome)?.code === "error.66"
+                ? t("ui.madnessTransitionBlock")
+                : undefined
+            }
+          />
+        ) : null}
+
+        {executePreview ? (
+          <ConsequenceList
+            outcome={executePreview}
+            targets={drafts.executeTarget ? [drafts.executeTarget] : []}
+            state={state}
+            ports={ports}
           />
         ) : null}
 
@@ -337,7 +364,11 @@ export function TableDock({ view }: { view: TableView }) {
                     if (!canExecute) return;
                     actions.run({
                       type: "executeByDecision",
-                      payload: { playerId: drafts.executeTarget, options: { survives: false } },
+                      payload: {
+                        playerId: drafts.executeTarget,
+                        options: { survives: drafts.executeSurvives },
+                      },
+                      ...previewIdentity(executePreview),
                     });
                   }}
                 >
@@ -360,6 +391,25 @@ export function TableDock({ view }: { view: TableView }) {
                     : t("noExecution")}
                 </DockButton>
               </div>
+              {state.script &&
+              Array.isArray(state.script.roles) &&
+              state.script.roles.some((id) =>
+                ["pacifist", "sailor", "fool", "devilsadvocate", "zombuul"].includes(id),
+              ) ? (
+                <label className="flex min-h-11 items-center gap-1.5 text-[10.5px] text-muted">
+                  <input
+                    type="checkbox"
+                    data-exec-survives
+                    checked={drafts.executeSurvives}
+                    onChange={(event) => drafts.setExecuteSurvives(event.target.checked)}
+                  />
+                  <span>
+                    {state.script.roles.includes("pacifist")
+                      ? t("ui.pacifistSurvives")
+                      : t("survivesExecution")}
+                  </span>
+                </label>
+              ) : null}
               <DockButton
                 className={QUIET_ACTION}
                 act="day-help"

@@ -30,6 +30,7 @@ import { SetupShell } from "../components/setup-shell.tsx";
 import type { BagEntryInput, BagLibrary } from "../ports.ts";
 import { useShellPorts } from "../ports.ts";
 import { useGame } from "../store/use-game.ts";
+import { commandRejectionText, setupProblemText } from "./setup-messages.ts";
 
 const MIN = 5;
 const MAX = 15;
@@ -231,7 +232,7 @@ export function BagScreen() {
       return;
     }
     if (!beginSetup()) return;
-    send({
+    const result = send({
       count: bag.roles.length,
       resetRoster: true,
       phase: "setup",
@@ -239,9 +240,13 @@ export function BagScreen() {
       bluffs: (bag.bluffs || []).slice(),
       drunkShownId: bag.drunkShownId || null,
       lunaticShownId: bag.lunaticShownId || null,
-      godfatherOutsider: bag.godfatherOutsider || 1,
+      godfatherOutsider: bag.godfatherOutsider ?? 1,
       evilTwinGoodId: bag.evilTwinGoodId || null,
     });
+    if (result.status !== "allowed") {
+      setBagError(commandRejectionText(result) || t("illegal"));
+      return;
+    }
     setArmed(false);
     setBagError("");
   };
@@ -282,8 +287,10 @@ export function BagScreen() {
   }, [state.setup.count]);
   const setCount = (next: number) => {
     if (next < MIN || next > MAX || next === countRef.current) return;
-    countRef.current = next;
+    // Ask before moving the local counter: a cancelled confirmation must not
+    // leave the ref one ahead, and a rejected command must not either.
     if (hasGame && !window.confirm(t("ui.changeCount"))) return;
+    countRef.current = next;
     pushUndo();
     const kept = ports.presets.resize({
       count: next,
@@ -291,7 +298,13 @@ export function BagScreen() {
       pool: scriptRoles,
       godfatherOutsider: shiftOf(state),
     });
-    send({ count: next, roles: kept });
+    const result = send({ count: next, roles: kept });
+    if (result.status !== "allowed") {
+      countRef.current = state.setup.count;
+      setUndoStack((past) => past.slice(0, -1));
+      setBagError(commandRejectionText(result) || t("illegal"));
+      return;
+    }
     setArmed(false);
     refreshError();
   };
@@ -374,10 +387,10 @@ export function BagScreen() {
       bluffs: bag ? (bag.bluffs ?? []) : [],
       drunkShownId: bag ? bag.drunkShownId || null : null,
       lunaticShownId: null,
-      godfatherOutsider: 1,
+      godfatherOutsider: bag ? (bag.godfatherOutsider ?? 1) : 1,
       evilTwinGoodId: null,
     });
-    if (result.status !== "allowed") setBagError(result.reason || t("illegal"));
+    if (result.status !== "allowed") setBagError(commandRejectionText(result) || t("illegal"));
   };
 
   const applyPickerChoice = () => {
@@ -572,7 +585,7 @@ export function BagScreen() {
         };
       }
     }
-    send({
+    const result = send({
       ...(script ? { script } : {}),
       count: bag.roles.length,
       resetRoster: true,
@@ -584,6 +597,12 @@ export function BagScreen() {
       godfatherOutsider: bag.godfatherOutsider,
       evilTwinGoodId: bag.evilTwinGoodId,
     });
+    if (result.status !== "allowed") {
+      // The library stays open and the game stays unchanged; the reason says
+      // why this saved bag cannot become the current one.
+      setLibraryError(commandRejectionText(result) || t("illegal"));
+      return;
+    }
     setLibraryOpen(false);
     setArmed(false);
     setTab("manual");
@@ -596,7 +615,7 @@ export function BagScreen() {
     const pool = library.pools.find((entry) => entry.id === id);
     if (!pool) return;
     if (hasGame && !window.confirm(t("ui.changeScript"))) return;
-    send({
+    const result = send({
       script: {
         id: "custom-" + pool.id,
         name: pool.name,
@@ -615,6 +634,10 @@ export function BagScreen() {
       lunaticShownId: null,
       evilTwinGoodId: null,
     });
+    if (result.status !== "allowed") {
+      setLibraryError(commandRejectionText(result) || t("illegal"));
+      return;
+    }
     setLibraryOpen(false);
     setArmed(false);
     setTab("manual");
@@ -940,13 +963,41 @@ export function BagScreen() {
     );
   };
 
+  // The engine problem carries only a code and a Russian message. The screen
+  // supplies the totals it already computes and the catalog role label.
+  const problemContext = (code: string) => {
+    const vars: Record<string, unknown> = {};
+    if (code === "size") {
+      vars.count = state.setup.roles.length;
+      vars.required = count;
+    } else if (code === "bluffs-count") {
+      vars.needed = requiredBluffs(count);
+      vars.count = state.setup.bluffs.length;
+    } else if (
+      code === "godfather-minus" ||
+      code === "vigormortis-minus" ||
+      code === "composition-impossible"
+    ) {
+      vars.count = count;
+    } else if (code.startsWith("team-")) {
+      const team = code.slice("team-".length) as (typeof TEAMS)[number];
+      const required = compositionFor(count, state.setup.roles, shiftOf(state));
+      const got = bagCounts(state.setup.roles);
+      vars.count = got[team];
+      vars.required = required ? required[team] : 0;
+    }
+    return { roleLabel: (id: string) => roleOf(id).name, vars };
+  };
+
   const statusMarkup = () =>
     errors.length ? (
       <div className="bag-status is-bad flex flex-col gap-1 text-[12px] text-danger" role="status">
         <b>{t("illegal")}</b>
         <ul className="m-0 grid list-disc gap-0.5 pl-4">
-          {errors.map((error) => (
-            <li key={error.message}>{error.message}</li>
+          {errors.map((error, index) => (
+            <li key={error.code + ":" + index}>
+              {setupProblemText(error, problemContext(error.code))}
+            </li>
           ))}
         </ul>
       </div>
@@ -2052,11 +2103,7 @@ export function BagScreen() {
     }
     const result = ports.commands.dealGame();
     if (result.status !== "allowed") {
-      const message =
-        result.status === "rejected"
-          ? result.errors?.join("\n") || result.reason || t("illegal")
-          : result.reason || t("illegal");
-      window.alert(message);
+      window.alert(commandRejectionText(result) || t("illegal"));
       return;
     }
     ports.router.go("/player");

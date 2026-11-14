@@ -308,7 +308,8 @@ export default {
   "guide.butler.host": "Ask the player to choose another player as master.",
   "guide.butler.grimoire": "Mark the chosen master.",
   "guide.butler.check": "Tomorrow the Butler may vote only when the master votes.",
-  "guide.drunk.host": "Act as though the player has the shown role.",
+  "guide.drunk.host":
+    "Run the shown role's step, but the Drunk's ability does not work and the information you give is false.",
   "guide.drunk.grimoire": "The real role is Drunk; the shown ability does not work.",
   "guide.drunk.check": "Never reveal that the player is drunk.",
   "guide.recluse.host": "Do not wake; choose permitted registrations when relevant.",
@@ -576,6 +577,81 @@ export default {
   "error.48": "A role has not been dealt yet.",
   "error.49": "This number has already been claimed.",
   "error.50": "You cannot choose the same target as last night.",
+  "error.51": "The outcome does not match the ability's choice.",
+  "error.52": "No deaths are possible: the ability did not work.",
+  "error.53": "You cannot choose a different Demon.",
+  "error.55": "Choose a living player.",
+  "error.56": "Choose a neighbouring Townsfolk.",
+  "error.57":
+    "Only a good player can survive an execution, and only while the Pacifist is alive and unimpaired.",
+  "error.58": "The Tinker is not in play or is already dead.",
+  "error.59": "The Tinker is poisoned or drunk: the ability does not work.",
+  "error.62": "The player has no active madness.",
+  "error.63": "Choose a legal madness penalty: execution or no consequence.",
+  "error.64": "Enter the reason for the storyteller's decision.",
+  "error.65": "The decision on this madness is already recorded today.",
+  "error.67": "The registration is unavailable: this player cannot change it.",
+  "error.68": "It is daytime: finish the day first.",
+  "error.bag-count": "The player count must be 5 to 15.",
+  "error.count": "The player count must be 5 to 15.",
+  "error.roles": "The role list is missing.",
+  "error.size": "Selected {count} roles, {required} needed.",
+  "error.duplicate": "One role is chosen twice.",
+  "error.unknown": "Unknown character: {role}.",
+  "error.outside-script": "{role} is not in the selected script.",
+  "error.script": "The script is invalid.",
+  "error.order": "The seat order is invalid.",
+  "error.godfather-minus":
+    "The Godfather cannot remove an Outsider: the base composition for {count} players has none.",
+  "error.vigormortis-minus":
+    "The Vigormortis cannot remove an Outsider: the base composition for {count} players has none.",
+  "error.composition-impossible":
+    "These composition modifiers are impossible: the base composition for {count} players cannot supply the chosen shifts.",
+  "error.team": "{team}: {count} of {required}.",
+  "error.demon": "Exactly one Demon must be in play.",
+  "error.drunk-unused": "A Drunk shown role is set, but no Drunk is in play.",
+  "error.drunk-shown": "Choose the Townsfolk the Drunk is shown.",
+  "error.drunk-team": "The Drunk can be shown a Townsfolk only.",
+  "error.drunk-outside-script": "The Drunk's shown role is not in the selected script.",
+  "error.drunk-inplay": "The Drunk's shown role must not be in play.",
+  "error.lunatic-shown": "Choose the Demon the Lunatic is shown.",
+  "error.lunatic-team": "The Lunatic can be shown a Demon only.",
+  "error.lunatic-outside-script": "The Lunatic's shown Demon is not in the selected script.",
+  "error.lunatic-unused": "A Lunatic shown Demon is set, but no Lunatic is in play.",
+  "error.bluffs-count-none": "A 5–6 player game issues no Demon bluffs.",
+  "error.bluffs-count": "Exactly {needed} bluffs are needed, {count} chosen.",
+  "error.bluffs-duplicate": "Bluffs must not repeat.",
+  "error.bluffs-team": "{role} is not a good character.",
+  "error.bluffs-outside-script": "{role} is not in the selected script.",
+  "error.bluffs-inplay": "{role} is already in play.",
+  "error.bluffs-drunk":
+    "{role} is the Drunk's mask. Giving it to the Demon as a bluff hints at the Drunk.",
+  "error.bluffs-lunatic":
+    "{role} is the Lunatic's mask. Giving it to the Demon as a bluff hints at the Lunatic.",
+  "error.herring-team": "The red herring must be a good player.",
+  "error.mixed-edition": "Mixed editions need manual-only mode.",
+  "error.evil-twin-good": "Choose the good player who is the other Twin.",
+  "error.not-dealt": "Deal the roles first.",
+  "error.herring": "Choose the Fortune Teller's red herring.",
+  "error.librarian-zero":
+    'The Librarian cannot learn "zero" while an Outsider other than the Recluse is in play.',
+  "error.info": "{role}: choose a character and two players.",
+  "error.info-pair": "{role}: two different players are required.",
+  "error.info-missing": "{role}: one of the players is missing.",
+  "error.info-team": "{role}: the chosen character is the wrong type.",
+  "error.info-inplay": "{role}: the chosen character must be in play.",
+  "error.info-true": "{role}: one of the two must be that character or a matching registration.",
+  "error.drunk-info": "Drunk: choose a false character and two players.",
+  "error.drunk-info-team": "Drunk: the false character must have the shown role's type.",
+  CYCLIC_EFFECT_DEPENDENCY:
+    "The effects depend on each other in a cycle: the state was not changed.",
+  CYCLIC_CASCADE: "Tonight's events depend on each other in a cycle: the state was not changed.",
+  "journal-invalid":
+    "The command journal is damaged or has no base state: replay is impossible and the game is unchanged.",
+  "journal-dependency":
+    "A journal entry does not replay: the recorded history does not reproduce, and the game is unchanged.",
+  "invariant-violation":
+    "The command broke state invariants and was rejected: the state was not changed.",
   scriptUntitled: "Custom script",
   "ui.registeredDead": "Registers as dead",
 
@@ -596,6 +672,8 @@ export default {
   jugglerHint:
     "First day: record up to five public guesses. The app counts the correct ones at night.",
   jugglerAdd: "Record guess",
+  jugglerCount: "Guesses recorded: {count} / 5",
+  jugglerNone: "No guesses",
 
   "system.info": "Information (Minions and Demon)",
   bmrHelpNote:
@@ -841,6 +919,11 @@ export default {
   "note.bmr.tinker": "The Tinker might die. Record the death only if it happens.",
   "note.bmr.moonchild":
     "The Moonchild chose this player when they died. If the player is good, they die.",
+  "note.bmr.lunaticFirst":
+    "Show the Lunatic {minions} Minion tips and 3 good characters (they may be in play): {bluffs}.",
+  "note.bmr.lunaticReport": "Lunatic: {name}; chose {target}. Tell the Demon.",
+  "note.bmr.godfatherOutsiders": "Outsiders in play: {outsiders}.",
+  "note.pithagInPlay": "{role} is already in play: nothing happens.",
   "note.abilityFailed": "The ability did not work: the player is poisoned or drunk.",
   "note.pukkaSuspended": "The Pukka's ability is suspended: the Pukka is poisoned or drunk.",
   "note.exorcistBlocked":
@@ -866,4 +949,22 @@ export default {
   "note.demonChanged":
     "The Demon changed. Wake the new Demon and show the Devil token. The new Demon does not act again tonight.",
   "note.roleChangedDemon": "The role changed before the step: it is now the Demon.",
+
+  "ui.blockRole": "Choose the character the ability names.",
+  "ui.blockDrunk": "Choose who is drunk until dusk.",
+  "ui.chooseTargetOnTable": "Choose a target on the table",
+  "ui.chooseRedirect": "Choose the Mayor's fate",
+  "ui.pacifistSurvives": "The Pacifist ability applies: this executed good player survives",
+  "ui.tinkerDay": "Tinker day death",
+  "ui.tinkerDayHint": "The Tinker may die at any time. Announce the death now.",
+  "ui.tinkerDayDies": "The Tinker dies now",
+  "ui.demoHint": "Opens the demo table; the saved game is not changed",
+  "error.66": "That answer is not one of the options for this step.",
+  "winReason.vortox": "The Vortox was alive, no one was executed, and the information was false.",
+  "winReason.evil-twin": "The Evil Twin's good twin was executed.",
+  "winReason.klutz": "The Klutz chose the player who lost them the game.",
+  "guide.lunatic.host":
+    "Wake the Lunatic and run the Demon's ability as if they were the Demon. The ability does nothing; tell the real Demon whom the Lunatic chose and what they were told.",
+  "guide.lunatic.grimoire": "The Lunatic keeps a false Demon token and sees no real state.",
+  "guide.lunatic.check": "Report the Lunatic's choice to the real Demon before they wake.",
 };

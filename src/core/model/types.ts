@@ -21,6 +21,8 @@ export type CommandType =
   | "gossipStatement"
   | "jugglerGuess"
   | "moonchildChoice"
+  | "recordKlutzChoice"
+  | "tinkerDeath"
   | "recoverClaim"
   | "dealGame"
   | "startGame"
@@ -402,10 +404,17 @@ export interface Gossip {
   [key: string]: unknown;
 }
 
-// The Juggler's public first-day guesses, keyed by the guessed player's id.
+// The Juggler's public first-day guesses. The current shape is a list because
+// the same player may be guessed more than once; a saved game may still carry
+// the legacy player-id map, which both the engine and the validator read.
+export interface JugglerGuess {
+  playerId: string;
+  roleId: RoleId;
+}
+
 export interface Juggler {
   day: number;
-  guesses: Record<string, RoleId>;
+  guesses: JugglerGuess[] | Record<string, RoleId>;
   [key: string]: unknown;
 }
 

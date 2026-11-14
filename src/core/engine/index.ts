@@ -78,13 +78,16 @@ export {
   useSlayer,
   gossipStatement,
   jugglerGuess,
+  reportJugglerGuesses,
   moonchildChoice,
+  tinkerDeath,
 } from "./day.ts";
 export { setupErrors, secretsErrors, autoSecrets, dealGame, claimSeat } from "./setup.ts";
 export { manualCorrection, bagSummary } from "./corrections.ts";
 export { bmrInfoForStep, recordBmrOutcome, resurrectPlayer } from "./bmr.ts";
 export {
   recordSvOutcome,
+  recordKlutzChoice,
   buildSvNightQueue,
   replaceCharacter,
   vigormortisPoisonChoices,

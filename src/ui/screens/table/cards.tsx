@@ -3,6 +3,7 @@
 import {
   madnessReviewProjection,
   poisonChoicesProjection,
+  resurrectChoices,
   secretsProjection,
   seatProjection,
   shownRoleChoices,
@@ -10,7 +11,6 @@ import {
 } from "../../../application/read-models/table.ts";
 import { useEffect, useState } from "react";
 import { livingPlayers, orderedPlayers, playerById } from "../../../core/model/state.ts";
-import { troubleBrewingScript } from "../../../core/model/scripts.ts";
 import { ALL_ROLES, isManualScript } from "../../../core/model/rules.ts";
 import { roleSupportEntries } from "../../../core/model/support.ts";
 import type { NightStep } from "../../../core/model/types.ts";
@@ -18,7 +18,11 @@ import {
   applyGiven,
   causeText,
   displayName,
+  guideForStep,
   infoText,
+  jugglerGuessingDay,
+  normalizeJugglerGuesses,
+  redirectChoiceValue,
   roleNameOf,
   stepTitle,
   targetNames,
@@ -136,7 +140,7 @@ export function NightCard({ view }: { view: TableView }) {
 function StepCard({ view, step }: { view: TableView; step: NightStep }) {
   const { state, drafts, ports, actions } = view;
   const t = ports.strings.t;
-  const guide = ports.guidance.for(step);
+  const guide = guideForStep(t, ports.guidance.for, state, step);
   const role = step.roleId ? ports.roles.byId(step.roleId) : null;
   const roleSupport = step.roleId ? roleSupportEntries([step.roleId])[0] : undefined;
   const actor = step.actorId ? playerById(state, step.actorId) : null;
@@ -258,7 +262,7 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
 
       {step.targetMode !== "none" ? (
         <div className="mt-3 rounded-sm border border-edge bg-crypt-3 p-2.5 text-[11px] text-muted">
-          <b className="text-text">Выберите цель на столе</b>
+          <b className="text-text">{t("ui.chooseTargetOnTable")}</b>
           {selected.length ? <span>: {targetNames(selected, state, t)}</span> : null}
           {deadImpTarget ? <p className={`${WARNING} mt-1`}>{t("ui.deadTarget")}</p> : null}
         </div>
@@ -270,9 +274,12 @@ function StepCard({ view, step }: { view: TableView; step: NightStep }) {
           <select
             className="field"
             data-redirect={key}
-            value={redirect || "none"}
+            value={redirectChoiceValue(redirect)}
             onChange={(event) => drafts.putRedirect(draftKey, event.target.value || "none")}
           >
+            <option value="" disabled>
+              {t("ui.chooseRedirect")}
+            </option>
             <option value="none">{t("ui.mayorDies")}</option>
             {orderedPlayers(state)
               .filter((player) => player.id !== selected[0])
@@ -491,6 +498,31 @@ function GivenSelect({
   const { state, drafts, ports } = view;
   const t = ports.strings.t;
   if (!info.needsChoice) return null;
+  if (info.kind === "note") {
+    // The host decides what a note-style role learns (Dreamer, Sage,
+    // Mathematician under a Vortox): the recorded text is the decision.
+    const current = drafts.givens.get(draftKey);
+    return (
+      <label className={FIELD_BOX}>
+        <span className="label">{t("falseInfo")}</span>
+        <textarea
+          className="field min-h-[52px] resize-y"
+          data-given={step.key}
+          data-given-kind="note"
+          defaultValue={current?.text ?? ""}
+          placeholder={info.text || t("computed")}
+          onChange={(event) => {
+            const text = event.target.value.trim();
+            if (!text) {
+              drafts.dropGiven(draftKey);
+              return;
+            }
+            drafts.putGiven(draftKey, { ...info, text, needsChoice: false });
+          }}
+        />
+      </label>
+    );
+  }
   let options: Array<string | number | boolean> = [];
   let kind = "number";
   if (info.kind === "number") {
@@ -520,9 +552,12 @@ function GivenSelect({
         : ALL_ROLES;
   }
   if (!options.length) return null;
+  // A character answer for a healthy Undertaker or Ravenkeeper is a
+  // registration decision, not false information.
+  const label = kind === "role" && !info.impaired ? t("registration") : t("falseInfo");
   return (
     <label className={FIELD_BOX}>
-      <span className="label">{t("falseInfo")}</span>
+      <span className="label">{label}</span>
       <select
         className="field"
         data-given={step.key}
@@ -688,7 +723,9 @@ function BmrOutcome({
             value={drafts.bmrDrunk.get(draftKey) || ""}
             onChange={(event) => drafts.putBmrDrunk(draftKey, event.target.value || null)}
           >
-            <option value="">{t("none")}</option>
+            <option value="" disabled>
+              {t("ui.choosePlayer")}
+            </option>
             {(step.roleId === "sailor"
               ? [step.actorId, ...(drafts.targets.get(draftKey) || [])]
               : drafts.targets.get(draftKey) || []
@@ -715,11 +752,15 @@ function BmrOutcome({
             onChange={(event) => drafts.putBmrResurrect(draftKey, event.target.value || null)}
           >
             <option value="">{t("none")}</option>
-            {dead.map((player) => (
-              <option key={player.id} value={player.id}>
-                {displayName(player, t)} · {roleNameOf(player.roleId, ports.roles.byId)}
-              </option>
-            ))}
+            {resurrectChoices(state, step, drafts.targets.get(draftKey) || []).map((id) => {
+              const player = playerById(state, id);
+              return (
+                <option key={id} value={id}>
+                  {player ? displayName(player, t) : id} ·{" "}
+                  {roleNameOf(player ? player.roleId : "", ports.roles.byId)}
+                </option>
+              );
+            })}
           </select>
         </label>
       ) : null}
@@ -736,11 +777,9 @@ export function DayCard({
 }) {
   const { state, drafts, ports, actions } = view;
   const t = ports.strings.t;
-  // Local to the day card: the choice must not survive into the next day.
-  const [execSurvives, setExecSurvives] = useState(false);
-  const [madnessReasons, setMadnessReasons] = useState<Record<string, string>>({});
+  // The execution choice and its survival flag live in the shared drafts, so
+  // the day card and the dock make one decision.
   const day = state.day;
-  const madnessReviews = madnessReviewProjection(state);
   const executed = day.execution ? playerById(state, day.execution.playerId) : null;
   const living = livingPlayers(state);
   const manual = isManualScript(state.script);
@@ -758,7 +797,12 @@ export function DayCard({
           (player) => player.roleId === "slayer" && player.alive && !player.used.slayer,
         )
       : null;
-  const canExecute = Boolean(drafts.executeTarget) && !day.execution && !day.ended && !state.winner;
+  const canExecute =
+    Boolean(drafts.executeTarget) &&
+    Boolean(playerById(state, drafts.executeTarget)?.alive) &&
+    !day.execution &&
+    !day.ended &&
+    !state.winner;
 
   return (
     <section className={`host-card is-day ${DAY_CARD}`} data-step="day">
@@ -768,6 +812,163 @@ export function DayCard({
       </p>
       <h1 className={CARD_TITLE}>{t("ui.dayResult")}</h1>
 
+      {!roleFormsOnly && !day.execution && !day.ended ? (
+        <div className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5">
+          <span className="label">{t("ui.executedWho")}</span>
+          <div className={INLINE}>
+            <select
+              className="field min-w-[180px]"
+              data-exec-target
+              value={drafts.executeTarget}
+              onChange={(event) => drafts.setExecuteTarget(event.target.value)}
+            >
+              <option value="">{t("ui.noExecution")}</option>
+              {orderedPlayers(state).map((player) => (
+                <option key={player.id} value={player.id}>
+                  {displayName(player, t)}
+                  {player.alive ? "" : t("ui.alreadyDead")}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn--accent"
+              type="button"
+              data-act="execute-direct"
+              disabled={!canExecute}
+              onClick={() => {
+                if (!drafts.executeTarget) return;
+                const result = actions.run({
+                  type: "executeByDecision",
+                  payload: {
+                    playerId: drafts.executeTarget,
+                    options: { survives: drafts.executeSurvives },
+                  },
+                });
+                if (result.status === "allowed") {
+                  drafts.setExecuteTarget("");
+                  drafts.setExecuteSurvives(false);
+                }
+              }}
+            >
+              {t("execute")}
+            </button>
+          </div>
+          {state.script &&
+          Array.isArray(state.script.roles) &&
+          state.script.roles.some((id) =>
+            ["pacifist", "sailor", "fool", "devilsadvocate", "zombuul"].includes(id),
+          ) ? (
+            <label className={CHECK}>
+              <input
+                type="checkbox"
+                data-exec-survives
+                checked={drafts.executeSurvives}
+                onChange={(event) => drafts.setExecuteSurvives(event.target.checked)}
+              />
+              <span>{pacifistSupport ? t("ui.pacifistSurvives") : t("survivesExecution")}</span>
+            </label>
+          ) : null}
+          {pacifistSupport ? (
+            <p className={MUTED} data-role-support="pacifist" data-status={pacifistSupport.status}>
+              <b>{t("roleSupport")}:</b> {t("roleSupport." + pacifistSupport.status)} —{" "}
+              {t(pacifistSupport.detail)}
+            </p>
+          ) : null}
+          <p className={MUTED}>{t("ui.tableVotes")}</p>
+        </div>
+      ) : null}
+
+      {!manual && virgin && !day.execution && !day.ended ? (
+        <form
+          className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5"
+          data-virgin-form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const data = new FormData(event.currentTarget);
+            actions.run({
+              type: "recordVirginNomination",
+              payload: {
+                nominatorId: String(data.get("nominator") || ""),
+                virginId: virgin.id,
+                options: { spyRegistersTownsfolk: data.has("spy") },
+              },
+            });
+          }}
+        >
+          <h2 className="m-0 text-[18px]">{t("virginNomination")}</h2>
+          <p className={CARD_TEXT}>{t("virginHint")}</p>
+          <label className="grid gap-1.5">
+            {t("nominator")}
+            <select className="field" name="nominator" required defaultValue="">
+              <option value="">{t("chooseTarget")}</option>
+              {living.map((player) => (
+                <option key={player.id} value={player.id}>
+                  {player.seat} · {displayName(player, t)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" name="spy" /> {t("spyTownsfolk")}
+          </label>
+          <button className="btn" type="submit" data-virgin={virgin.id}>
+            {t("recordNomination")}
+          </button>
+        </form>
+      ) : null}
+
+      {!roleFormsOnly && executed ? (
+        <div className="my-2.5 rounded-md border border-crimson-dim bg-crimson-dim/20 p-2.5">
+          <span className="label">{t("execution")}</span>
+          <b className="my-0.5 block text-[18px]">{displayName(executed, t)}</b>
+          <p className={MUTED}>
+            {day.execution?.deathId ? t("ui.executedDied") : t("ui.executedNoDeath")}
+          </p>
+        </div>
+      ) : null}
+
+      {slayer ? <SlayerPanel view={view} slayerId={slayer.id} /> : null}
+      {manual ? null : <GossipPanel view={view} />}
+      {manual ? null : <JugglerPanel view={view} />}
+      {manual ? null : <MoonchildPanel view={view} />}
+      {manual ? null : mastermindPanel(view)}
+    </section>
+  );
+}
+
+/**
+ * The day actions that are not role forms: the madness review, the manual
+ * winner (manual scripts only) and the Tinker's daytime death. They live in the
+ * table menu, not in the day-help sheet, which only resolves role forms.
+ */
+export function DayActionsPanel({ view }: { view: TableView }) {
+  const { state, ports, drafts, actions } = view;
+  const t = ports.strings.t;
+  const [madnessReasons, setMadnessReasons] = useState<Record<string, string>>({});
+  const madnessReviews = madnessReviewProjection(state);
+  const day = state.day;
+  const manual = isManualScript(state.script);
+  const tinker =
+    state.script && Array.isArray(state.script.roles) && state.script.roles.includes("tinker")
+      ? orderedPlayers(state).find((player) => player.roleId === "tinker" && player.alive)
+      : null;
+  if (!madnessReviews.length && !manual && !tinker) return null;
+  return (
+    <>
+      {tinker && state.phase === "day" && !day.execution && !day.ended && !state.winner ? (
+        <div className="grid gap-1.5 rounded-sm border border-edge p-2.5" data-tinker-day>
+          <span className="label">{t("ui.tinkerDay")}</span>
+          <p className={`${MUTED} m-0`}>{t("ui.tinkerDayHint")}</p>
+          <button
+            className="btn"
+            type="button"
+            data-act="tinker-day-death"
+            onClick={() => actions.run({ type: "tinkerDeath", payload: { playerId: tinker.id } })}
+          >
+            {t("ui.tinkerDayDies")}
+          </button>
+        </div>
+      ) : null}
       {madnessReviews.length ? (
         <div
           className={`${SECTION} grid gap-2 border border-edge-2 border-l-2 border-l-accent p-2.5`}
@@ -867,130 +1068,8 @@ export function DayCard({
           })}
         </div>
       ) : null}
-
-      {!roleFormsOnly && !day.execution && !day.ended ? (
-        <div className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5">
-          <span className="label">{t("ui.executedWho")}</span>
-          <div className={INLINE}>
-            <select
-              className="field min-w-[180px]"
-              data-exec-target
-              value={drafts.executeTarget}
-              onChange={(event) => drafts.setExecuteTarget(event.target.value)}
-            >
-              <option value="">{t("ui.noExecution")}</option>
-              {orderedPlayers(state).map((player) => (
-                <option key={player.id} value={player.id}>
-                  {displayName(player, t)}
-                  {player.alive ? "" : t("ui.alreadyDead")}
-                </option>
-              ))}
-            </select>
-            <button
-              className="btn btn--accent"
-              type="button"
-              data-act="execute-direct"
-              disabled={!canExecute}
-              onClick={() => {
-                if (!drafts.executeTarget) return;
-                const result = actions.run({
-                  type: "executeByDecision",
-                  payload: {
-                    playerId: drafts.executeTarget,
-                    options: { survives: execSurvives },
-                  },
-                });
-                if (result.status === "allowed") {
-                  drafts.setExecuteTarget("");
-                  setExecSurvives(false);
-                }
-              }}
-            >
-              {t("execute")}
-            </button>
-          </div>
-          {state.script &&
-          Array.isArray(state.script.roles) &&
-          state.script.roles.some((id) =>
-            ["pacifist", "sailor", "fool", "devilsadvocate", "zombuul"].includes(id),
-          ) ? (
-            <label className={CHECK}>
-              <input
-                type="checkbox"
-                data-exec-survives
-                checked={execSurvives}
-                onChange={(event) => setExecSurvives(event.target.checked)}
-              />
-              <span>{t("survivesExecution")}</span>
-            </label>
-          ) : null}
-          {pacifistSupport ? (
-            <p className={MUTED} data-role-support="pacifist" data-status={pacifistSupport.status}>
-              <b>{t("roleSupport")}:</b> {t("roleSupport." + pacifistSupport.status)} —{" "}
-              {t(pacifistSupport.detail)}
-            </p>
-          ) : null}
-          <p className={MUTED}>{t("ui.tableVotes")}</p>
-        </div>
-      ) : null}
-
-      {!manual && virgin && !day.execution && !day.ended ? (
-        <form
-          className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5"
-          data-virgin-form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const data = new FormData(event.currentTarget);
-            actions.run({
-              type: "recordVirginNomination",
-              payload: {
-                nominatorId: String(data.get("nominator") || ""),
-                virginId: virgin.id,
-                options: { spyRegistersTownsfolk: data.has("spy") },
-              },
-            });
-          }}
-        >
-          <h2 className="m-0 text-[18px]">{t("virginNomination")}</h2>
-          <p className={CARD_TEXT}>{t("virginHint")}</p>
-          <label className="grid gap-1.5">
-            {t("nominator")}
-            <select className="field" name="nominator" required defaultValue="">
-              <option value="">{t("chooseTarget")}</option>
-              {living.map((player) => (
-                <option key={player.id} value={player.id}>
-                  {player.seat} · {displayName(player, t)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input type="checkbox" name="spy" /> {t("spyTownsfolk")}
-          </label>
-          <button className="btn" type="submit" data-virgin={virgin.id}>
-            {t("recordNomination")}
-          </button>
-        </form>
-      ) : null}
-
-      {!roleFormsOnly && executed ? (
-        <div className="my-2.5 rounded-md border border-crimson-dim bg-crimson-dim/20 p-2.5">
-          <span className="label">{t("execution")}</span>
-          <b className="my-0.5 block text-[18px]">{displayName(executed, t)}</b>
-          <p className={MUTED}>
-            {day.execution?.deathId ? t("ui.executedDied") : t("ui.executedNoDeath")}
-          </p>
-        </div>
-      ) : null}
-
-      {slayer ? <SlayerPanel view={view} slayerId={slayer.id} /> : null}
-      {manual ? null : <GossipPanel view={view} />}
-      {manual ? null : <JugglerPanel view={view} />}
-      {manual ? null : <MoonchildPanel view={view} />}
-      {manual ? null : mastermindPanel(view)}
-
       {manual ? (
-        <div className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5">
+        <div className="grid gap-1.5 rounded-sm border border-edge p-2.5">
           <span className="label">{t("manualWinner")}</span>
           <div className={INLINE}>
             <select
@@ -1021,7 +1100,7 @@ export function DayCard({
           <p className={MUTED}>{t("manualWinnerHint")}</p>
         </div>
       ) : null}
-    </section>
+    </>
   );
 }
 
@@ -1126,18 +1205,35 @@ function JugglerPanel({ view }: { view: TableView }) {
     state.script && Array.isArray(state.script.roles) && state.script.roles.includes("juggler")
       ? orderedPlayers(state).find((player) => player.roleId === "juggler" && player.alive)
       : null;
-  if (!juggler || state.phase !== "day" || state.day.number !== 1 || state.day.ended) {
+  const storedDay =
+    state.juggler && typeof state.juggler.day === "number" ? state.juggler.day : null;
+  const guessingDay = jugglerGuessingDay(
+    state.day.number,
+    storedDay,
+    Boolean(juggler && juggler.changedFrom),
+  );
+  if (
+    !juggler ||
+    state.phase !== "day" ||
+    state.day.ended ||
+    state.winner ||
+    juggler.used.juggler ||
+    guessingDay !== state.day.number
+  ) {
     return null;
   }
-  const guesses = state.juggler && state.juggler.day === 1 ? state.juggler.guesses : {};
-  const count = Object.keys(guesses).length;
+  const guesses = normalizeJugglerGuesses(state.juggler ? state.juggler.guesses : null);
+  const count = guesses.length;
   const target = drafts.jugglerTarget;
-  const full = count >= 5 && !guesses[target];
+  const full = count >= 5;
   return (
     <div className="my-2.5 grid gap-1.5 rounded-sm border border-edge p-2.5">
       <span className="label">{t("jugglerPanel")}</span>
       <p className={MUTED}>
         {displayName(juggler, t)}: {t("jugglerHint")}
+      </p>
+      <p className={MUTED} data-juggler-count>
+        {t("jugglerCount", { count })}
       </p>
       <div className={INLINE}>
         <select
@@ -1182,15 +1278,24 @@ function JugglerPanel({ view }: { view: TableView }) {
         >
           {t("jugglerAdd")}
         </button>
+        <button
+          className="btn"
+          type="button"
+          data-act="juggler-none"
+          disabled={count > 0 || Boolean(state.juggler) || Boolean(state.winner)}
+          onClick={() => actions.run({ type: "jugglerGuess", payload: { guesses: [] } })}
+        >
+          {t("jugglerNone")}
+        </button>
       </div>
       {count ? (
         <ul className="m-0 grid gap-1 pl-4">
-          {Object.entries(guesses).map(([id, roleId]) => {
-            const player = state.players[id];
+          {guesses.map((guess, index) => {
+            const player = state.players[guess.playerId];
             return (
-              <li key={id} className={MUTED}>
-                {player ? displayName(player, t) : id}:{" "}
-                {roleNameOf(String(roleId), ports.roles.byId)}
+              <li key={guess.playerId + "-" + index} className={MUTED}>
+                {player ? displayName(player, t) : guess.playerId}:{" "}
+                {roleNameOf(guess.roleId, ports.roles.byId)}
               </li>
             );
           })}
@@ -1289,48 +1394,7 @@ export function DealCard({ view }: { view: TableView }) {
   const errors = secretsProjection(state).errors;
   const step = !everyoneNamed ? "names" : !seated ? "seats" : "secrets";
   const route = step === "names" ? "player" : step === "seats" ? "seat" : "secrets";
-  const demo15 = () => {
-    const roles = [
-      "washerwoman",
-      "librarian",
-      "investigator",
-      "chef",
-      "empath",
-      "fortuneteller",
-      "undertaker",
-      "monk",
-      "ravenkeeper",
-      "butler",
-      "saint",
-      "poisoner",
-      "spy",
-      "scarletwoman",
-      "imp",
-    ];
-    const run = actions.run;
-    if (run({ type: "newGame", payload: { count: 15 } }).status !== "allowed") return;
-    if (
-      run({
-        type: "bagUpdate",
-        payload: {
-          patch: {
-            script: troubleBrewingScript(),
-            count: 15,
-            roles,
-            bluffs: ["virgin", "slayer", "soldier"],
-            resetRoster: true,
-          },
-        },
-      }).status !== "allowed"
-    )
-      return;
-    if (run({ type: "dealGame", payload: {} }).status !== "allowed") return;
-    run({ type: "autoSecrets", payload: {} });
-    for (let id = 1; id <= 15; id += 1) {
-      run({ type: "claimSeat", payload: { playerId: String(id), name: `Игрок ${id}` } });
-    }
-    ports.router.go("/table");
-  };
+  const demoRoute = () => ports.router.go("demo");
   return (
     <section className={`host-card ${CARD} ${CARD_LINE}`}>
       {manualWarning(view)}
@@ -1372,8 +1436,8 @@ export function DealCard({ view }: { view: TableView }) {
           className="btn btn--quiet"
           type="button"
           data-act="demo-15"
-          title="Демо: 15 игроков"
-          onClick={demo15}
+          title={t("ui.demoHint")}
+          onClick={demoRoute}
         >
           {t("demo")}
         </button>
@@ -1381,9 +1445,14 @@ export function DealCard({ view }: { view: TableView }) {
       {seated && errors.length ? (
         <Warn title={t("setupErrors")} bad>
           <ul className="mt-1 list-disc pl-4">
-            {errors.map((error) => (
-              <li key={error.code + error.message}>{error.message}</li>
-            ))}
+            {errors.map((error) => {
+              const localized = t(error.code);
+              return (
+                <li key={error.code + error.message}>
+                  {localized !== error.code ? localized : error.message}
+                </li>
+              );
+            })}
           </ul>
         </Warn>
       ) : null}

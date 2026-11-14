@@ -4,7 +4,11 @@
 // table: the app bar, a scrollable stage and a fixed action dock.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DispatchResult } from "../../../core/commands/result.ts";
-import { mayorRedirectNeeded, tableProjection } from "../../../application/read-models/table.ts";
+import {
+  mayorRedirectNeeded,
+  tableProjection,
+  targetBounds,
+} from "../../../application/read-models/table.ts";
 import { playerById } from "../../../core/model/state.ts";
 import { useShellPorts } from "../../ports.ts";
 import type { PreviewOutcome, ShellPorts } from "../../ports.ts";
@@ -15,7 +19,7 @@ import { useTableDrafts } from "./drafts.ts";
 import { TableDock } from "./dock.tsx";
 import { ArcaneAppBar } from "../../components/arcane/index.ts";
 import { TableRing } from "./ring.tsx";
-import { rejectionOf } from "./helpers.ts";
+import { nextSelection, rejectionOf, rejectionText } from "./helpers.ts";
 import type { Rejection } from "./helpers.ts";
 import { readStepDraft } from "./step-draft.ts";
 import type { TableActions, TableView } from "./view.ts";
@@ -77,7 +81,14 @@ export function TableScreen() {
   const run = useCallback(
     (command: Parameters<ShellPorts["commands"]["dispatch"]>[0]): DispatchResult => {
       const result = ports.commands.dispatch(command);
-      setRejection(rejectionOf(result));
+      const rejection = rejectionOf(result);
+      // `error.66` is an illegal answer in a step, but in a madness review the
+      // same code means the review condition changed; give each its own copy.
+      setRejection(
+        rejection?.code === "error.66" && command.type === "madnessPenalty"
+          ? { text: ports.strings.t("ui.madnessTransitionBlock"), code: null }
+          : rejection,
+      );
       return result;
     },
     [ports],
@@ -152,17 +163,12 @@ export function TableScreen() {
         return;
       }
       const key = `${state.createdAt}:${state.night.number}:${step.key}`;
-      const list = (drafts.targets.get(key) || []).slice();
+      const list = drafts.targets.get(key) || [];
       const before = list[0];
-      const at = list.indexOf(playerId);
-      if (at !== -1) list.splice(at, 1);
-      else if (step.targetMode === "two") {
-        if (list.length >= 2) list.shift();
-        list.push(playerId);
-      } else list.splice(0, list.length, playerId);
-      drafts.putTargets(key, list);
-      if (before !== list[0]) drafts.dropRedirect(key);
-      if (mayorRedirectNeeded(state, step, list[0] || "") && !drafts.redirects.has(key)) {
+      const next = nextSelection(list, playerId, targetBounds(step).max);
+      drafts.putTargets(key, next);
+      if (before !== next[0]) drafts.dropRedirect(key);
+      if (mayorRedirectNeeded(state, step, next[0] || "") && !drafts.redirects.has(key)) {
         drafts.putRedirect(key, "none");
       }
     },
@@ -236,7 +242,7 @@ export function TableScreen() {
   const rejectionWarning = rejection ? (
     <div className={`${ALERT} ${ALERT_BAD}`} role="alert" data-rejection>
       <b>{t("ui.rejectedTitle")}</b>
-      <p className="my-1">{rejection.text || t("setupErrors")}</p>
+      <p className="my-1">{rejectionText(rejection, t) || t("setupErrors")}</p>
       <button
         className="btn"
         type="button"

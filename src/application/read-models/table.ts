@@ -166,6 +166,27 @@ export function poisonChoicesProjection(state: GameState, deathIds: string[]): s
   return vigormortisPoisonChoices(state, deathIds[0]);
 }
 
+/**
+ * The dead players the engine accepts for the resurrect select. The Professor
+ * may only raise the target the step chose; the Shabaloth only a player it
+ * chose last night. A role without that restriction offers every dead player.
+ */
+export function resurrectChoices(state: GameState, step: NightStep, targetIds: string[]): string[] {
+  const dead = orderedPlayers(state)
+    .filter((player) => !player.alive)
+    .map((player) => player.id);
+  if (step.roleId === "professor") {
+    return dead.filter((id) => targetIds.includes(id));
+  }
+  if (step.roleId === "shabaloth") {
+    const used = (step.actorId ? playerById(state, step.actorId) : null)?.used;
+    if (!used || Number(used.shabalothTargetsNight) !== state.night.number - 1) return [];
+    const previous = Array.isArray(used.shabalothTargets) ? used.shabalothTargets.map(String) : [];
+    return dead.filter((id) => previous.includes(id));
+  }
+  return dead;
+}
+
 /** The role options the host may hand out as false information. */
 export function shownRoleChoices(state: GameState, playerId: string): RoleId[] {
   return characterChoices(state, playerId, true);

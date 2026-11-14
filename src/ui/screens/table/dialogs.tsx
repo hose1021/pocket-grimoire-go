@@ -13,15 +13,17 @@ import { orderedPlayers, playerById } from "../../../core/model/state.ts";
 import { ALL_ROLES, roleTeam } from "../../../core/model/rules.ts";
 import { Dialog, DialogClose } from "../../components/dialog.tsx";
 import {
+  blockerText,
   defaultCorrectionValue,
   displayName,
-  infoText,
+  guideForStep,
   previewIdentity,
   roleNameOf,
+  shownCardText,
   stepTitle,
 } from "./helpers.ts";
 import { EffectBadges, PanelHead, RoleToken } from "./parts.tsx";
-import { DayCard, NightCard, SlayerPanel } from "./cards.tsx";
+import { DayActionsPanel, DayCard, NightCard, SlayerPanel } from "./cards.tsx";
 import { DayPanel, SidePanel } from "./frame.tsx";
 import { stepContext } from "./step-context.ts";
 import { writeStepDraft } from "./step-draft.ts";
@@ -125,9 +127,16 @@ function PlayerInfoCard({ view }: { view: TableView }) {
   const roleId = actor ? actor.shownRoleId || actor.roleId : step.roleId;
   const role = roleId ? ports.roles.byId(roleId) : null;
   const generic = step.system === "minioninfo" || step.system === "demoninfo" ? step.system : null;
-  const text = derived.actorImpaired
-    ? drafts.infoTemplate || t("ui.notSet")
-    : infoText(state, step, shown, ports.roles.byId, t);
+  const text = shownCardText(
+    state,
+    step,
+    shown,
+    drafts.givens.get(draftKey),
+    drafts.infoTemplate,
+    derived.actorImpaired,
+    ports.roles.byId,
+    t,
+  );
   if (generic) {
     const players = orderedPlayers(state);
     const roleOf = (id: string | null) => (id ? ports.roles.byId(id) : null);
@@ -230,7 +239,7 @@ function StepSheet({ view }: { view: TableView }) {
   const step = tableProjection(state).step;
   if (!step) return null;
   const context = stepContext(state, drafts, step);
-  const guide = ports.guidance.for(step);
+  const guide = guideForStep(t, ports.guidance.for, state, step);
   const preview = actions.preview({ type: "completeNightStep", payload: context.payload });
   return (
     <ShellDialog
@@ -241,6 +250,18 @@ function StepSheet({ view }: { view: TableView }) {
       closeLabel={t("close")}
     >
       <NightCard view={view} />
+      {context.blockers.length ? (
+        <ul
+          className="mt-3 grid list-none gap-1 p-0 text-[11px] leading-tight text-amber-2"
+          data-step-blockers
+        >
+          {context.blockers.map((blocker) => (
+            <li key={blocker} data-blocker-reason={blocker}>
+              {blockerText(blocker, context.minTargets, t)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           className="btn min-h-11 !justify-center"
@@ -534,6 +555,7 @@ function MenuDialog({ view }: { view: TableView }) {
       <div className="grid max-h-[68dvh] gap-2 overflow-y-auto" data-menu>
         <SidePanel view={view} />
         <DayPanel view={view} />
+        <DayActionsPanel view={view} />
       </div>
     </ShellDialog>
   );

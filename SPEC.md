@@ -183,8 +183,12 @@ state and optional pending Demon-heir choice.
   nomination, the recorded votes and the `ceil(living / 2)` threshold, the
   execution result and the dawn report; dismissing the dawn shows the active
   nomination or an explicit no-nomination state. The day-help sheet carries
-  only the role forms. The day dock has exactly three actions: execute the
-  selected player, end the day without execution, and day help. Nominations
+  only the role forms; the madness review, a manual winner declaration and the
+  Tinker's day death live in the table menu. The day dock has exactly three
+  actions: execute the selected player, end the day without execution, and day
+  help. The day card and the dock share one selected player and one survival
+  choice, and both require a living target. A disabled Confirm lists every
+  blocker reason inside the step sheet. Nominations
   and votes stay live at the table; the app records only the execution result
   and keeps an imported nomination and the threshold read-only. The engine
   remains the authority and a refused command shows its reason. A full-screen player card shows a role card, the night

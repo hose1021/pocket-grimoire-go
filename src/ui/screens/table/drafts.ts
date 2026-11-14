@@ -71,6 +71,8 @@ export interface TableDrafts {
   setArmedNew(value: boolean): void;
   executeTarget: string;
   setExecuteTarget(value: string): void;
+  executeSurvives: boolean;
+  setExecuteSurvives(value: boolean): void;
   slayerTarget: string;
   setSlayerTarget(value: string): void;
   recluseSlayer: boolean;
@@ -129,6 +131,7 @@ export function useTableDrafts(
   const [guided, setGuided] = useState(guidedPreference);
   const [armedNew, setArmedNew] = useState(false);
   const [executeTarget, setExecuteTarget] = useState("");
+  const [executeSurvives, setExecuteSurvives] = useState(false);
   const [slayerTarget, setSlayerTarget] = useState("");
   const [recluseSlayer, setRecluseSlayer] = useState(false);
   const [winnerTeam, setWinnerTeam] = useState<"good" | "evil">("good");
@@ -196,6 +199,8 @@ export function useTableDrafts(
     setArmedNew,
     executeTarget,
     setExecuteTarget,
+    executeSurvives,
+    setExecuteSurvives,
     slayerTarget,
     setSlayerTarget,
     recluseSlayer,

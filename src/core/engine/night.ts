@@ -74,6 +74,7 @@ import {
   nowIso,
   orderedPlayers,
   playerById,
+  registersAlive,
   seatName,
 } from "../model/state.ts";
 
@@ -406,6 +407,9 @@ export function appendConditionalSteps(state: GameState) {
 
 export function startNight(state: GameState) {
   if (state.winner) return { ok: false, errorCode: "error.6", error: "Игра уже окончена." };
+  // A stale tab must not turn an active day back into a night.
+  if (state.phase === "day")
+    return { ok: false, errorCode: "error.68", error: "Сейчас день: сначала завершите день." };
   if (state.phase === "night" && state.night.queue.length) {
     return { ok: true, queue: state.night.queue, resumed: true };
   }
@@ -419,7 +423,7 @@ export function startNight(state: GameState) {
 
   if (state.phase !== "deal" && state.phase !== "seat" && state.phase !== "night") {
     // Night can restart after a reload; only block clearly wrong phases.
-    if (state.phase !== "day") state.phase = "deal";
+    state.phase = "deal";
   }
   if (!state.night.number || state.night.number < 1) state.night.number = 1;
   state.phase = "night";
@@ -515,6 +519,25 @@ export function completeStep(state: GameState, key: string, options: NightOption
   for (const id of targets) {
     if (!playerById(state, id))
       return { ok: false, errorCode: "error.31", error: "Цель не найдена." };
+  }
+  // Bad Moon Rising target text: Sailor r1768 and Devil's Advocate r2594 choose
+  // an alive/living player, Chambermaid r2966 chooses 2 alive players (not
+  // themself). A registered-dead Zombuul counts as dead for the ability.
+  const registeredLiving = (id: string): boolean => registersAlive(playerById(state, id));
+  if (
+    step.bmr &&
+    (step.roleId === "sailor" || step.roleId === "devilsadvocate") &&
+    targets.some((id) => !registeredLiving(id))
+  ) {
+    return { ok: false, errorCode: "error.55", error: "Нельзя выбрать мёртвого игрока." };
+  }
+  if (step.bmr && step.roleId === "chambermaid") {
+    if (step.actorId != null && targets.includes(step.actorId)) {
+      return { ok: false, errorCode: "error.40", error: "Нельзя выбрать себя." };
+    }
+    if (targets.some((id) => !registeredLiving(id))) {
+      return { ok: false, errorCode: "error.55", error: "Нельзя выбрать мёртвого игрока." };
+    }
   }
   if (step.previousTarget && targets.includes(step.previousTarget)) {
     return {

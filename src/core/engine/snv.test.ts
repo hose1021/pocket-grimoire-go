@@ -18,12 +18,14 @@ import {
   importGame,
   publicGameView,
   publicRoleView,
+  realTeamOf,
   setRoster,
   validateState,
 } from "../model/state.ts";
 import {
   applyCommand,
   appendConditionalSteps,
+  buildSvNightQueue,
   checkWin,
   completeStep,
   currentStep,
@@ -42,6 +44,7 @@ import {
   nominate,
   openNominations,
   reconcileVigormortisPoison,
+  recordKlutzChoice,
   recordSvOutcome,
   recordVotes,
   replaceCharacter,
@@ -49,6 +52,7 @@ import {
   startNight,
 } from "./index.ts";
 import { reconcileNoDashiiPoison } from "./index.ts";
+import { minionRetainsAbility } from "./retention.ts";
 import { parseScript, sectsAndVioletsScript } from "../model/scripts.ts";
 import type { GameState, NightStep, RoleId, Role } from "../model/types.ts";
 import type { InfoResult } from "./index.ts";
@@ -164,14 +168,26 @@ test("random Sects and Violets bags are legal at every player count", () => {
   }
 });
 
-test("the Vigormortis -1 Outsider choice is rejected when there is no Outsider to remove", () => {
-  const errors = bagErrors({
-    count: 7,
-    roles: ["fanggu", "vigormortis", "clockmaker", "dreamer", "sailor", "artist", "juggler"],
-    bluffs: [],
-    pool: SNV_ALL,
+test("a seven-player Vigormortis bag is legal with no Outsider to remove", () => {
+  // Vigormortis r3015: "if there are no Outsider tokens to remove, do not add
+  // a Townsfolk token". The base composition at seven players has no Outsider,
+  // so the -1 Outsider changes nothing and the bag stays legal.
+  assert.deepEqual(compositionFor(7, ["vigormortis"]), {
+    townsfolk: 5,
+    outsider: 0,
+    minion: 1,
+    demon: 1,
   });
-  assert.ok(errors.some((error) => error.code === "vigormortis-minus"));
+  const roles: RoleId[] = [...SNV.townsfolk.slice(0, 5), SNV.minion[0]!, "vigormortis"];
+  assert.equal(roles.length, 7);
+  const bluffs = SNV_ALL.filter((id) => !roles.includes(id)).slice(0, 3);
+  const errors = bagErrors({ count: 7, roles, bluffs, pool: SNV_ALL });
+  assert.equal(
+    errors.some((error) => error.code === "vigormortis-minus"),
+    false,
+    "the Vigormortis is not blamed for an Outsider it never removes",
+  );
+  assert.deepEqual(errors, []);
 });
 
 test("an Sects and Violets game deals, validates and builds the first night", () => {
@@ -276,7 +292,10 @@ test("the Witch curse kills the nominator but keeps the nomination", () => {
   );
 });
 
-test("a dead or impaired Witch cannot curse the nomination", () => {
+test("a curse the Witch placed still kills the next nomination after the Witch dies or is impaired", () => {
+  // Witch r3013: the curse is placed on the player and resolves on their next
+  // nomination. Losing the ability later does not remove a placed curse; the
+  // only removal is "if just 3 players live".
   for (const impair of ["dead", "poison"]) {
     const state = make({ 1: "clockmaker", 6: "witch", 7: "fanggu" }, { count: 7 });
     startNight(state);
@@ -307,10 +326,33 @@ test("a dead or impaired Witch cannot curse the nomination", () => {
     };
     const result = nominate(state, "1", "2");
     assert.equal(result.ok, true, impair);
-    assert.equal(result.curse, false, impair);
-    assert.equal(state.players["1"].alive, true, impair);
-    assert.equal(state.day.nominations.length, 1, impair);
+    assert.equal(result.curse, true, impair + ": the placed curse still resolves");
+    assert.equal(state.players["1"].alive, false, impair + ": the cursed nominator dies");
+    assert.equal(state.day.nominations.length, 1, impair + ": the nomination stands");
   }
+});
+
+test("the Witch loses a placed curse only when exactly three players live", () => {
+  const state = make({ 1: "clockmaker", 6: "witch", 7: "fanggu" }, { count: 7 });
+  startNight(state);
+  const witch = state.night.queue.find((step) => step.roleId === "witch")!;
+  completeStep(state, witch.key, { targetIds: ["1"] });
+  for (const id of ["3", "4", "5", "6"]) state.players[id].alive = false;
+  assert.equal(state.order.filter((id) => state.players[id].alive).length, 3);
+  state.phase = "day";
+  state.day = {
+    number: 1,
+    morning: [],
+    nominations: [],
+    activeNominationId: null,
+    execution: null,
+    ended: false,
+    open: true,
+  };
+  const result = nominate(state, "1", "2");
+  assert.equal(result.ok, true);
+  assert.equal(result.curse, false, "with three living the Witch has no ability");
+  assert.equal(state.players["1"].alive, true);
 });
 
 test("a first Outsider death makes the Outsider the new Fang Gu and kills the old Demon", () => {
@@ -691,7 +733,7 @@ test("the Pit-Hag replaces a character atomically", () => {
   assert.deepEqual(validateState(state), []);
 });
 
-test("the Pit-Hag cannot create a character already in play", () => {
+test("the Pit-Hag choosing a character already in play records that nothing happens", () => {
   const state = make({ 1: "clockmaker", 6: "pithag", 7: "fanggu" }, { count: 7 });
   laterNight(state);
   const step = stepFor(state, "pithag");
@@ -703,9 +745,12 @@ test("the Pit-Hag cannot create a character already in play", () => {
     targetIds: [target],
     roleId: "clockmaker",
   });
-  assert.equal(result.status, "rejected", JSON.stringify(result));
-  assert.equal(state.players[target].roleId, previous, "the state is unchanged");
-  assert.equal(state.night.queue.find((candidate) => candidate.key === step.key)!.done, false);
+  assert.equal(result.status, "allowed", JSON.stringify(result));
+  assert.equal(state.players[target].roleId, previous, "the character does not change");
+  const finished = state.night.queue.find((candidate) => candidate.key === step.key)!;
+  assert.equal(finished.done, true, "the step is complete");
+  assert.equal(finished.noteKey, "note.pithagInPlay");
+  assert.match(finished.note || "", /уже в игре/, "the host is told nothing happens");
   assertNoDuplicateCharacters(state);
 });
 
@@ -2138,18 +2183,60 @@ test("the Juggler guesses on the first day and the night answer counts the match
   assert.equal(completeStep(state, step.key, {}).ok, true);
 });
 
-test("the Juggler has no step without guesses and the command has limits", () => {
+test("the Juggler may guess zero times and still learns zero", () => {
   const state = make({ 1: "juggler", 2: "clockmaker", 7: "cerenovus", 8: "fanggu" }, { count: 8 });
   startNight(state);
   finishNight(state);
   assert.equal(endNight(state).ok, true);
+  // The Juggler made no guesses on their first day; the host records that.
+  state.juggler = { day: 1, guesses: {} };
   assert.equal(endDay(state).ok, true);
-  assert.equal(
-    state.night.queue.some((candidate) => candidate.roleId === "juggler"),
-    false,
-    "no guesses, no step",
-  );
+  const step = stepFor(state, "juggler");
+  const info = infoForStep(state, step);
+  assert.equal(info.kind, "number");
+  assert.equal(info.value, 0, "zero guesses is a legal answer");
+  assert.equal(completeStep(state, step.key, {}).ok, true);
+});
 
+test("the Juggler's answer counts repeated guesses and uses the guessing day", () => {
+  const state = make({ 1: "juggler", 2: "clockmaker", 7: "cerenovus", 8: "fanggu" }, { count: 8 });
+  startNight(state);
+  finishNight(state);
+  assert.equal(endNight(state).ok, true);
+  // Juggler r3020: up to five players' characters; a player may be guessed
+  // more than once with different characters.
+  state.juggler = {
+    day: 1,
+    guesses: [
+      { playerId: "2", roleId: "clockmaker" },
+      { playerId: "2", roleId: "oracle" },
+      { playerId: "6", roleId: "clockmaker" },
+    ],
+  };
+  assert.equal(endDay(state).ok, true);
+  const info = infoForStep(state, stepFor(state, "juggler"));
+  assert.equal(info.value, 1, "each guess is counted separately");
+
+  // "Your 1st day" is the Juggler's own first day, not day one of the game.
+  const later = make({ 1: "juggler", 2: "clockmaker", 7: "cerenovus", 8: "fanggu" }, { count: 8 });
+  later.night.number = 3;
+  later.night.queue = [];
+  later.juggler = { day: 2, guesses: { "2": "clockmaker" } };
+  const built = buildSvNightQueue(later);
+  assert.ok(
+    built.some((candidate) => candidate.roleId === "juggler"),
+    "the step follows the day the guesses were made",
+  );
+  later.night.queue = [];
+  later.juggler = { day: 1, guesses: { "2": "clockmaker" } };
+  assert.equal(
+    buildSvNightQueue(later).some((candidate) => candidate.roleId === "juggler"),
+    false,
+    "guesses from an earlier day do not repeat the step",
+  );
+});
+
+test("the Juggler command has limits", () => {
   const limited = make(
     { 1: "juggler", 2: "clockmaker", 7: "cerenovus", 8: "fanggu" },
     { count: 8 },
@@ -2395,4 +2482,265 @@ test("a full Sects and Violets game runs from setup to a winner", () => {
   assert.ok(state.winner, "the game reaches a winner");
   assert.deepEqual(validateState(state), []);
   assert.equal(seen.juggler, 1, "the Juggler's night answer counts the first-day guesses");
+});
+
+// ---------------------------------------------------------------------------
+// Issue #171 section 3: Sects and Violets audit fixes
+
+test("the Klutz public choice resolves the game as soon as the Klutz learns of the death", () => {
+  const state = make({ 1: "klutz", 2: "clockmaker", 8: "fanggu" }, { count: 8 });
+  laterNight(state);
+  state.phase = "day";
+  state.day = {
+    number: 2,
+    morning: [],
+    nominations: [],
+    activeNominationId: null,
+    execution: null,
+    ended: false,
+    open: true,
+  };
+  assert.equal(executeByDecision(state, "1").ok, true);
+  assert.equal(state.players["1"].alive, false);
+  const result = recordKlutzChoice(state, "8");
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(state.winner && state.winner.team, "evil", "an evil choice loses immediately");
+  assert.equal(state.winner && state.winner.reason, "klutz");
+  assert.equal(state.players["1"].used.klutz, true, "the once-per-game is spent");
+  assert.equal(state.players["1"].used.klutzTarget, "8", "the public choice is recorded");
+});
+
+test("a recorded Klutz choice finishes the queued step and a dead target does not strand it", () => {
+  const state = make({ 1: "klutz", 2: "clockmaker", 8: "fanggu" }, { count: 8 });
+  laterNight(state);
+  kill(state, "1", "ability", { phase: "night", number: 2 }, { demon: true, ability: "fanggu" });
+  appendConditionalSteps(state);
+  const step = state.night.queue.find((candidate) => candidate.roleId === "klutz")!;
+  assert.ok(step, "the dead Klutz has a step");
+  // The target the player meant to choose died first: the host must be able to
+  // choose any player who is alive at the moment of the public choice.
+  const rejected = recordKlutzChoice(state, "1");
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.errorCode, "error.55", "a dead target is refused, not stranded");
+  assert.equal(recordKlutzChoice(state, "2").ok, true, "another living player is legal");
+  assert.equal(step.done, true, "the public choice completes the queued step");
+  assert.deepEqual(step.targetIds, ["2"]);
+  assert.equal(state.winner, null, "a good choice does not lose");
+});
+
+test("a Pit-Hag-created Demon does not take the Demon turn and its deaths are not Demon attacks", () => {
+  const state = make({ 1: "clockmaker", 2: "sage", 6: "pithag", 8: "fanggu" }, { count: 8 });
+  laterNight(state);
+  const step = stepFor(state, "pithag");
+  const newDemon = ["nodashii", "vortox", "vigormortis"].find(
+    (id) => !rolesInPlay(state).includes(id),
+  ) as RoleId;
+  const created = runStep(state, "pithag-demon-create", {
+    key: step.key,
+    targetIds: ["3"],
+    roleId: newDemon,
+  });
+  assert.equal(created.status, "allowed", JSON.stringify(created));
+  assert.equal(state.players["3"].roleId, newDemon);
+  assert.equal(
+    state.night.queue.some(
+      (candidate) => candidate.roleId === newDemon && !candidate.done && !candidate.skipped,
+    ),
+    false,
+    "the created Demon does not wake again tonight",
+  );
+  assert.equal(step.canKill, true, "the host records the arbitrary deaths on the Pit-Hag step");
+  const outcome = recordSvOutcome(state, step.key, { deathIds: ["2"] });
+  assert.equal(outcome.ok, true, JSON.stringify(outcome));
+  const death = state.deaths.find((entry) => entry.playerId === "2")!;
+  assert.ok(death, "the Sage died");
+  assert.notEqual(death.demon, true, "the death is a Pit-Hag attack, not a Demon attack");
+  assert.equal(
+    state.night.queue.some((candidate) => candidate.roleId === "sage"),
+    false,
+    "the Sage does not wake for a Pit-Hag death",
+  );
+});
+
+test("Vortox and impairment make the Dreamer, Sage and Mathematician answers false choices", () => {
+  const state = make({ 1: "dreamer", 2: "sage", 3: "mathematician", 7: "vortox" }, { count: 8 });
+  startNight(state);
+  // The Vortox ends a day without an execution, so the second night is built
+  // directly to keep the Demon alive for the information check.
+  state.night.number = 2;
+  state.night.queue = buildSvNightQueue(state);
+  const vortox = stepFor(state, "vortox");
+  assert.equal(completeStep(state, vortox.key, { targetIds: ["2"] }).ok, true);
+  assert.equal(recordSvOutcome(state, vortox.key, { deathIds: ["2"] }).ok, true);
+  for (const roleId of ["dreamer", "mathematician", "sage"]) {
+    const step = stepFor(state, roleId);
+    const info = infoForStep(state, step);
+    assert.equal(info.needsChoice, true, roleId + " demands a false answer under a Vortox");
+    const targets = (step.minTargets || 0) > 0 ? ["2"] : [];
+    const blocked = stepOutcome(completeStep(state, step.key, { targetIds: targets }));
+    assert.equal(blocked.needsChoice, true, roleId + " is blocked without the host answer");
+  }
+
+  const clear = make({ 1: "dreamer", 2: "sage", 3: "mathematician", 7: "fanggu" }, { count: 8 });
+  laterNight(clear);
+  assert.equal(
+    infoForStep(clear, stepFor(clear, "dreamer")).needsChoice,
+    false,
+    "a healthy Dreamer without a Vortox needs no answer",
+  );
+});
+
+test("a drunk dead Minion loses the Vigormortis retention and the neighbour poison until sober", () => {
+  const state = make({ 1: "clockmaker", 2: "cerenovus", 8: "vigormortis" }, { count: 8 });
+  laterNight(state);
+  const step = stepFor(state, "vigormortis");
+  assert.equal(completeStep(state, step.key, { targetIds: ["2"] }).ok, true);
+  assert.equal(recordSvOutcome(state, step.key, { deathIds: ["2"] }).ok, true);
+  const poison = state.effects.find((effect) => effect.vigormortis === true)!;
+  assert.ok(poison, "the neighbour poison exists");
+  assert.equal(poison.active, true);
+  assert.equal(minionRetainsAbility(state, "2"), true, "the dead Minion keeps the ability");
+
+  const drunk = {
+    id: "test-dead-minion-drunk",
+    kind: "drunk",
+    sourceId: "1",
+    targetId: "2",
+    start: { phase: "night" as const, number: 2 },
+    expires: null,
+    active: true,
+  };
+  state.effects.push(drunk);
+  reconcileVigormortisPoison(state);
+  assert.equal(isImpaired(state, "2"), true, "the dead Minion is drunk");
+  assert.equal(
+    minionRetainsAbility(state, "2"),
+    false,
+    "a drunk Minion loses the retained ability",
+  );
+  assert.equal(poison.active, false, "the permanent neighbour poison does not bypass impairment");
+  assert.equal(isImpaired(state, poison.targetId!), false, "the poisoned neighbour is healthy");
+
+  state.effects = state.effects.filter((effect) => effect !== drunk);
+  reconcileVigormortisPoison(state);
+  assert.equal(minionRetainsAbility(state, "2"), true, "the ability returns when sober");
+  assert.equal(poison.active, true);
+  assert.equal(isImpaired(state, poison.targetId!), true);
+});
+
+test("a Philosopher who borrowed the Klutz still makes the public choice after dying", () => {
+  const state = make({ 1: "philosopher", 2: "clockmaker", 6: "pithag", 7: "fanggu" }, { count: 7 });
+  startNight(state);
+  const borrowed = runStep(state, "philosopher-klutz", {
+    key: stepFor(state, "philosopher").key,
+    roleId: "klutz",
+  });
+  assert.equal(borrowed.status, "allowed", JSON.stringify(borrowed));
+  assert.equal(state.players["1"].used.philosopherAbility, "klutz");
+  kill(state, "1", "ability", { phase: "night", number: 1 }, { demon: true, ability: "fanggu" });
+  appendConditionalSteps(state);
+  const step = state.night.queue.find(
+    (candidate) => candidate.roleId === "klutz" && candidate.actorId === "1",
+  );
+  assert.ok(step, "the borrowed Klutz ability wakes after the Philosopher dies");
+  assert.equal(completeStep(state, step.key, { targetIds: ["7"] }).ok, true);
+  assert.equal(state.winner && state.winner.reason, "klutz");
+  assert.equal(state.winner && state.winner.team, "evil");
+});
+
+test("the Sweetheart drunk starts at the death, not at the Sweetheart night slot", () => {
+  const state = make({ 1: "sweetheart", 2: "clockmaker", 8: "fanggu" }, { count: 8 });
+  laterNight(state);
+  state.phase = "day";
+  state.day = {
+    number: 2,
+    morning: [],
+    nominations: [],
+    activeNominationId: null,
+    execution: null,
+    ended: false,
+    open: true,
+  };
+  assert.equal(executeByDecision(state, "1").ok, true);
+  assert.equal(state.players["1"].alive, false, "the Sweetheart was executed");
+  state.phase = "night";
+  state.night.number = 3;
+  state.night.queue = [];
+  appendConditionalSteps(state);
+  const step = state.night.queue.find((candidate) => candidate.roleId === "sweetheart");
+  assert.ok(step, "the dead Sweetheart has a step");
+  assert.equal(completeStep(state, step.key, { targetIds: ["2"] }).ok, true);
+  const drunk = state.effects.find((effect) => effect.kind === "drunk" && effect.targetId === "2")!;
+  assert.ok(drunk, "the chosen player is drunk");
+  assert.equal(drunk.start.phase, "day", "the drunk starts at the death");
+  assert.equal(drunk.start.number, 2);
+});
+
+test("a Pit-Hag-created Evil Twin keeps the twin win and the good-win block", () => {
+  const state = make({ 1: "clockmaker", 2: "dreamer", 6: "pithag", 7: "fanggu" }, { count: 7 });
+  laterNight(state);
+  const step = stepFor(state, "pithag");
+  const created = runStep(state, "pithag-eviltwin", {
+    key: step.key,
+    targetIds: ["2"],
+    roleId: "eviltwin",
+  });
+  assert.equal(created.status, "allowed", JSON.stringify(created));
+  assert.equal(state.players["2"].roleId, "eviltwin");
+  assert.equal(state.setup.evilTwinPlayerId, "2", "the new Evil Twin joins the pair");
+  const goodTwin = state.setup.evilTwinGoodPlayerId;
+  assert.equal(typeof goodTwin, "string", "the pair has a good twin");
+  assert.notEqual(goodTwin, "2");
+  assert.equal(state.players[goodTwin!].alive, true);
+  assert.equal(realTeamOf(state.players[goodTwin!]), "good");
+
+  // Executing the good twin still wins for evil.
+  state.phase = "day";
+  state.day = {
+    number: 3,
+    morning: [],
+    nominations: [],
+    activeNominationId: null,
+    execution: null,
+    ended: false,
+    open: true,
+  };
+  assert.equal(executeByDecision(state, goodTwin!).ok, true);
+  assert.equal(state.winner && state.winner.reason, "evil-twin");
+
+  const blocked = make({ 1: "clockmaker", 2: "dreamer", 6: "pithag", 7: "fanggu" }, { count: 7 });
+  laterNight(blocked);
+  const blockedStep = stepFor(blocked, "pithag");
+  assert.equal(
+    runStep(blocked, "pithag-eviltwin-block", {
+      key: blockedStep.key,
+      targetIds: ["2"],
+      roleId: "eviltwin",
+    }).status,
+    "allowed",
+  );
+  blocked.players["7"].alive = false;
+  assert.equal(
+    checkWin(blocked),
+    null,
+    "good cannot win while both twins live and the Demon is dead",
+  );
+});
+
+test("a madness execution can happen during the night", () => {
+  const state = make({ 1: "clockmaker", 2: "mutant", 6: "witch", 7: "fanggu" }, { count: 8 });
+  startNight(state);
+  state.phase = "night";
+  state.night.number = 2;
+  const result = applyCommand(state, {
+    id: "madness-night-execution",
+    type: "madnessPenalty",
+    payload: {
+      playerId: "2",
+      penalty: "execute",
+      reason: "The Mutant broke madness during the night.",
+    },
+  });
+  assert.equal(result.status, "allowed", JSON.stringify(result));
+  assert.equal(state.players["2"].alive, false, "the Storyteller may execute at night");
 });

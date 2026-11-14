@@ -13,6 +13,7 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "fallback": "node scripts/build-fallback.mjs --root dist",
     "offline": "node scripts/build-offline.mjs --root dist --out dist/sw.js",
+    "scenarios": "node scripts/run-scenarios.mjs",
     "verify": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build && npm run fallback && npm run offline && node scripts/check-types-policy.mjs && node scripts/check-acceptance.mjs"
   },
   "dependencies": {

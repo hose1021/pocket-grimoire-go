@@ -3,6 +3,7 @@
 // and records the answer the host gives.
 import type { GameState, NightStep, RoleId } from "../model/types.ts";
 import { addLog } from "./context.ts";
+import { isImpaired } from "./effects.ts";
 
 export const HOST_CHOICE_CASES = [
   "false-information",
@@ -142,6 +143,7 @@ export function registrationError(
     if (!player) return "Нет такого игрока для регистрации.";
     const legal = legalRegistrations(player.roleId);
     if (!legal.length) return "Этот персонаж не меняет регистрацию.";
+    if (isImpaired(state, player.id)) return "Игрок отравлен или пьян: регистрация не действует.";
     if (!legal.includes(String(value))) return "Недопустимое значение регистрации.";
   }
   return null;

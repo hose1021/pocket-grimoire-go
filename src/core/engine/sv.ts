@@ -1,4 +1,4 @@
-import type { DeadAt, GameState, NightStep, Player, RoleId } from "../model/types.ts";
+import type { DeadAt, GameState, JugglerGuess, NightStep, Player, RoleId } from "../model/types.ts";
 
 type StepSpec = {
   targetMode?: string;
@@ -31,7 +31,7 @@ type SvInfoOptions = { targetIds?: string[]; registrations?: Record<string, stri
 // Vortox/Evil Twin/Witch win conditions.
 import { isSupportedRole, nightSequence, roleLabel, roleTeam } from "../model/rules.ts";
 
-import { livingPlayers, orderedPlayers, playerById, realTeamOf } from "../model/state.ts";
+import { livingPlayers, nowIso, orderedPlayers, playerById, realTeamOf } from "../model/state.ts";
 
 import { addLog, currentAt, dayAt, insertStepInto, nightAt } from "./context.ts";
 import { checkWin, evilTwinPair, kill, setWinner } from "./death.ts";
@@ -199,7 +199,7 @@ function stepSpec(roleId: RoleId, night: number): StepSpec | null {
       snakecharmer: { targetMode: "one-any", infoKind: "note" },
       witch: { targetMode: "one-any", infoKind: "note" },
       cerenovus: { targetMode: "one-any", infoKind: "note" },
-      pithag: { targetMode: "one-any", infoKind: "note" },
+      pithag: { targetMode: "one-any", infoKind: "note", canKill: true },
       fanggu: { targetMode: "one-any", canKill: true },
       nodashii: { targetMode: "one-any", canKill: true },
       vortox: { targetMode: "one-any", canKill: true },
@@ -217,6 +217,15 @@ function stepSpec(roleId: RoleId, night: number): StepSpec | null {
     }[roleId] || null
   );
 }
+
+// Death-triggered wakes. They are not in the printed night order, so their
+// steps are built from these specs when the death happens.
+const DEATH_WAKE_SPECS: Record<string, StepSpec> = {
+  barber: { targetMode: "two", optional: true, infoKind: "note" },
+  sweetheart: { targetMode: "one-any", infoKind: "note" },
+  sage: { targetMode: "none", infoKind: "note" },
+  klutz: { targetMode: "one-any", infoKind: "note" },
+};
 
 function diedRecently(state: GameState, playerId: string): boolean {
   const night = nightAt(state).number;
@@ -241,6 +250,22 @@ function diedByDemon(state: GameState, playerId: string): boolean {
   );
 }
 
+// The Juggler's public guesses. The command stores a list of pairs because the
+// same player may be guessed more than once with different characters; a saved
+// game may still carry the legacy player-id map, which both shapes are read for.
+function jugglerGuesses(state: GameState): JugglerGuess[] {
+  const stored = state.juggler ? state.juggler.guesses : null;
+  if (!stored) return [];
+  if (Array.isArray(stored)) {
+    return stored
+      .filter(
+        (entry) => entry && typeof entry.playerId === "string" && typeof entry.roleId === "string",
+      )
+      .map((entry) => ({ playerId: String(entry.playerId), roleId: String(entry.roleId) }));
+  }
+  return Object.entries(stored).map(([playerId, roleId]) => ({ playerId, roleId: String(roleId) }));
+}
+
 function stepAllowed(
   state: GameState,
   roleId: RoleId,
@@ -257,11 +282,11 @@ function stepAllowed(
   if (roleId === "philosopher") return !(actor.used && actor.used.philosopher);
   if (roleId === "seamstress") return !(actor.used && actor.used.seamstress);
   if (roleId === "juggler") {
-    const guesses =
-      state.juggler && state.juggler.day === 1 && state.juggler.guesses
-        ? state.juggler.guesses
-        : {};
-    return !(actor.used && actor.used.juggler) && Object.keys(guesses).length > 0;
+    // "On your 1st day": the step follows the day the guesses were made, and
+    // zero guesses is a legal answer.
+    const guessingDay =
+      state.juggler && typeof state.juggler.day === "number" ? state.juggler.day : null;
+    return !(actor.used && actor.used.juggler) && guessingDay === nightAt(state).number - 1;
   }
   if (roleId === "witch") return livingPlayers(state).length > 3;
   return true;
@@ -444,6 +469,7 @@ function requeueForCharacter(
   player: Player,
   order: number,
   currentKey: string | null,
+  suppressWake: boolean = false,
 ) {
   for (const step of state.night.queue) {
     if (step.done || step.skipped || step.key === currentKey) continue;
@@ -453,6 +479,10 @@ function requeueForCharacter(
     setStepNote(step, "note.characterChanged", null, "Персонаж сменился до пробуждения.");
   }
   if (state.phase !== "night" || !player.roleId) return;
+  // Pit-Hag r2998: "if a Demon is made, deaths tonight are arbitrary". The
+  // created Demon does not take the normal Demon turn, so its slot is not
+  // added; the host records the arbitrary deaths on the Pit-Hag step.
+  if (suppressWake && roleTeam(player.roleId) === "demon") return;
   const night = nightAt(state).number;
   const roleId = player.roleId;
   const spec = stepSpec(roleId, night);
@@ -473,7 +503,7 @@ export function replaceCharacter(
   state: GameState,
   playerId: string,
   roleId: RoleId,
-  options: { order?: number; currentKey?: string | null } = {},
+  options: { order?: number; currentKey?: string | null; suppressWake?: boolean } = {},
 ): SvStepResult {
   const player = playerById(state, playerId);
   if (!player) return { ok: false, errorCode: "error.1", error: "Игрок не найден." };
@@ -491,7 +521,29 @@ export function replaceCharacter(
     if (roleId === "philosopher") delete player.used.philosopher;
   }
   if (Array.isArray(state.bluffs)) state.bluffs = state.bluffs.filter((id) => id !== roleId);
-  requeueForCharacter(state, player, options.order || 0, options.currentKey ?? null);
+  // Evil Twin r2964: "You & an opposing player know each other." A twin created
+  // mid-game still needs a partner, otherwise both the execution win and the
+  // "good can't win" block disappear.
+  if (roleId === "eviltwin") {
+    state.setup.evilTwinPlayerId = player.id;
+    const stored = state.setup.evilTwinGoodPlayerId;
+    const current = typeof stored === "string" ? playerById(state, stored) : null;
+    const goodTwin =
+      current && current.alive && current.id !== player.id && realTeamOf(current) === "good"
+        ? current
+        : orderedPlayers(state).find(
+            (candidate) =>
+              candidate.alive && candidate.id !== player.id && realTeamOf(candidate) === "good",
+          ) || null;
+    state.setup.evilTwinGoodPlayerId = goodTwin ? goodTwin.id : null;
+  }
+  requeueForCharacter(
+    state,
+    player,
+    options.order || 0,
+    options.currentKey ?? null,
+    options.suppressWake === true,
+  );
   reconcileNoDashiiPoison(state);
   reconcileVigormortisPoison(state);
   reconcilePhilosopherDrunk(state);
@@ -652,7 +704,16 @@ export function reconcileVigormortisPoison(state: GameState) {
   for (const effect of state.effects) {
     if (effect.vigormortis !== true) continue;
     const source = effect.sourceId == null ? null : playerById(state, effect.sourceId);
-    if (!active || !source || roleTeam(source.roleId || "") !== "minion") effect.active = false;
+    // The permanent poison outlives its dead source, but not the source's own
+    // impairment: a drunk or poisoned dead Minion's ability does nothing, so
+    // the neighbour is healthy until the Minion is sober and healthy again.
+    const shouldBeActive = Boolean(
+      active &&
+      source &&
+      roleTeam(source.roleId || "") === "minion" &&
+      !isImpaired(state, source.id, currentAt(state)),
+    );
+    if (effect.active !== shouldBeActive) effect.active = shouldBeActive;
   }
 }
 
@@ -728,14 +789,20 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
     };
   }
   if (role === "dreamer") {
+    const falsified = impaired || vortoxFalsifies(state, role);
     return {
       kind: "note",
+      impaired,
+      needsChoice: falsified,
       text: target
         ? "Сон о " +
           target.name +
           ": покажите 1 добрую и 1 злую роль; одна из них — роль " +
           target.name +
-          "."
+          "." +
+          (falsified
+            ? " Ведущий даёт ложную информацию: ни одна из ролей не обязана быть верной."
+            : "")
         : "Выберите игрока: покажите 1 добрую и 1 злую роль.",
     };
   }
@@ -767,9 +834,16 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
     };
   }
   if (role === "sage") {
+    const falsified = impaired || vortoxFalsifies(state, role);
     return {
       kind: "note",
-      text: "Демон убил Мудреца. Покажите 2 игроков, один из которых — Демон.",
+      impaired,
+      needsChoice: falsified,
+      text:
+        "Демон убил Мудреца. Покажите 2 игроков, один из которых — Демон." +
+        (falsified
+          ? " Ведущий даёт ложную информацию: ни один из них не обязан быть Демоном."
+          : ""),
     };
   }
   if (role === "sweetheart") {
@@ -842,13 +916,10 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
     };
   }
   if (role === "juggler") {
-    const guesses =
-      state.juggler && state.juggler.day === 1 && state.juggler.guesses
-        ? state.juggler.guesses
-        : {};
-    const value = Object.entries(guesses).filter(([id, guessed]) => {
-      const player = playerById(state, id);
-      return Boolean(player && player.roleId === guessed);
+    const guesses = jugglerGuesses(state);
+    const value = guesses.filter((guess) => {
+      const player = playerById(state, guess.playerId);
+      return Boolean(player && player.roleId === guess.roleId);
     }).length;
     const falsified = impaired || vortoxFalsifies(state, role);
     return {
@@ -856,25 +927,90 @@ export function svInfoForStep(state: GameState, step: NightStep, options: SvInfo
       value,
       impaired,
       needsChoice: falsified,
-      options: falsified
-        ? numberChoices(Object.keys(guesses).length).filter((choice) => choice !== value)
-        : [],
+      options: falsified ? numberChoices(5).filter((choice) => choice !== value) : [],
       text:
         "Жонглёр угадал верно: " +
         value +
         " из " +
-        Object.keys(guesses).length +
+        guesses.length +
         "." +
         (falsified ? " Ведущий даёт ложную информацию: выберите число." : ""),
     };
   }
   if (role === "mathematician") {
+    const falsified = impaired || vortoxFalsifies(state, role);
     return {
       kind: "note",
-      text: "Ведущий считает, у скольких игроков способность сработала некорректно.",
+      impaired,
+      needsChoice: falsified,
+      text:
+        "Ведущий считает, у скольких игроков способность сработала некорректно." +
+        (falsified ? " Ведущий даёт ложное число." : ""),
     };
   }
   return { kind: "none" };
+}
+
+// Klutz r1758: "When you learn that you died, publicly choose 1 alive player:
+// if they are evil, your team loses." The choice happens at the death, so the
+// host records it as soon as the player is told instead of waiting for a night
+// wake; a player who dies before the choice is replaced, never a strand.
+function resolveKlutzChoice(
+  state: GameState,
+  klutz: Player,
+  step: NightStep | null,
+  target: Player,
+) {
+  const at = currentAt(state);
+  klutz.used = klutz.used || {};
+  klutz.used.klutz = true;
+  klutz.used.klutzTarget = target.id;
+  let noteKey = "note.klutzNotEvil";
+  let note = target.name + " не злой: команда Растяпы не проигрывает.";
+  if (isImpaired(state, klutz.id, at)) {
+    noteKey = "note.abilityFailed";
+    note = "Способность не сработала: игрок отравлен или пьян.";
+  } else if (realTeamOf(target) === "evil") {
+    // The trigger is the target's evil alignment, not a comparison with the
+    // Klutz's own team. An evil Klutz therefore loses for evil and good wins.
+    const klutzTeam = realTeamOf(klutz) === "evil" ? "evil" : "good";
+    noteKey = "note.klutzEvil";
+    note = target.name + " злой: команда Растяпы проигрывает.";
+    setWinner(state, klutzTeam === "evil" ? "good" : "evil", "klutz");
+  }
+  if (step) {
+    step.targetIds = [target.id];
+    setStepNote(step, noteKey, { name: target.name }, note);
+    step.done = true;
+    step.completedAt = nowIso();
+  }
+  addLog(state, {
+    secret: true,
+    kind: "ability",
+    title: "Растяпа выбирает " + target.name,
+    detail: note,
+    playerId: klutz.id,
+  });
+}
+
+/** Record the Klutz's public choice at the moment the player learns of the death. */
+export function recordKlutzChoice(state: GameState, targetId: string): SvStepResult {
+  if (state.winner) return { ok: false, errorCode: "error.6", error: "Игра уже окончена." };
+  const klutz = orderedPlayers(state).find(
+    (player) => player.roleId === "klutz" && !player.alive && !(player.used && player.used.klutz),
+  );
+  if (!klutz) return { ok: false, errorCode: "error.29", error: "Растяпа не может выбрать." };
+  const target = playerById(state, targetId);
+  if (!target || !target.alive) {
+    return { ok: false, errorCode: "error.55", error: "Нельзя выбрать мёртвого игрока." };
+  }
+  const step =
+    state.night.queue.find(
+      (candidate) =>
+        candidate.roleId === "klutz" && candidate.actorId === klutz.id && !candidate.done,
+    ) || null;
+  resolveKlutzChoice(state, klutz, step, target);
+  return { ok: true };
 }
 
 export function completeSvStep(
@@ -955,9 +1091,26 @@ export function completeSvStep(
       return { ok: false, errorCode: "error.2", error: "Выберите роль из сценария." };
     }
     if (holderOf(state, roleId)) {
-      return { ok: false, errorCode: "error.52", error: "Эта роль уже в игре." };
+      // Pit-Hag r2988: the change happens only "if that character is not in
+      // play". Choosing a character already in play is a legal outcome in
+      // which nothing happens, not an error.
+      setStepNote(
+        step,
+        "note.pithagInPlay",
+        { role: roleLabel(roleId) },
+        roleLabel(roleId) + " уже в игре: ничего не происходит.",
+      );
+      return { ok: true };
     }
-    replaceCharacter(state, target.id, roleId, { order, currentKey: step.key });
+    // "If a Demon is made, deaths tonight are arbitrary": the created Demon
+    // does not wake in its own slot and the host records the deaths here.
+    const createsDemon = roleTeam(roleId) === "demon";
+    replaceCharacter(state, target.id, roleId, {
+      order,
+      currentKey: step.key,
+      suppressWake: createsDemon,
+    });
+    if (createsDemon) step.canKill = true;
     setStepNote(
       step,
       "note.characterBecame",
@@ -965,7 +1118,7 @@ export function completeSvStep(
       target.name +
         " становится: " +
         roleLabel(roleId) +
-        (roleTeam(roleId) === "demon" ? ". Смерти этой ночью выбирает ведущий." : "."),
+        (createsDemon ? ". Смерти этой ночью выбирает ведущий." : "."),
     );
     return { ok: true };
   }
@@ -1029,41 +1182,17 @@ export function completeSvStep(
   }
 
   if (step.roleId === "klutz") {
-    const target = targets[0] ? playerById(state, targets[0]) : null;
+    const recordedId = typeof actor.used.klutzTarget === "string" ? actor.used.klutzTarget : null;
+    const targetId = targets[0] || recordedId;
+    const target = targetId ? playerById(state, targetId) : null;
     if (!target) return { ok: false, errorCode: "error.31", error: "Цель не найдена." };
-    if (!target.alive) {
+    // The public choice is made when the Klutz learns of the death, so a new
+    // choice must be a living player. A choice recorded at the death stands
+    // even if that player dies before the queued step resolves.
+    if (!recordedId && !target.alive) {
       return { ok: false, errorCode: "error.55", error: "Нельзя выбрать мёртвого игрока." };
     }
-    actor.used.klutz = true;
-    if (impaired) {
-      setStepNote(
-        step,
-        "note.abilityFailed",
-        null,
-        "Способность не сработала: игрок отравлен или пьян.",
-      );
-      return { ok: true };
-    }
-    // "if they are evil, your team loses" (r1758): the trigger is the target's
-    // evil alignment, not a comparison with the Klutz's own team. An evil
-    // Klutz therefore loses for evil and good wins.
-    if (realTeamOf(target) !== "evil") {
-      setStepNote(
-        step,
-        "note.klutzNotEvil",
-        { name: target.name },
-        target.name + " не злой: команда Растяпы не проигрывает.",
-      );
-      return { ok: true };
-    }
-    const klutzTeam = realTeamOf(actor) === "evil" ? "evil" : "good";
-    setStepNote(
-      step,
-      "note.klutzEvil",
-      { name: target.name },
-      target.name + " злой: команда Растяпы проигрывает.",
-    );
-    setWinner(state, klutzTeam === "evil" ? "good" : "evil", "klutz");
+    resolveKlutzChoice(state, actor, step, target);
     return { ok: true };
   }
 
@@ -1128,7 +1257,9 @@ export function completeSvStep(
       kind: "drunk",
       sourceId: actor.id,
       targetId: targets[0],
-      start: at,
+      // Sweetheart r3016: "1 player is drunk from now on". The window starts
+      // at the death, not at the Sweetheart's night slot.
+      start: actor.deadAt || at,
       expires: null,
       active: true,
     });
@@ -1235,9 +1366,9 @@ export function appendSvConditionalSteps(state: GameState) {
   const night = nightAt(state).number;
   const queue = state.night.queue;
   const sequence = nightSequence(night, "snv");
-  const add = (roleId: RoleId, spec: StepSpec) => {
-    if (queue.some((step) => step.roleId === roleId && !step.done && !step.skipped)) return;
-    const actor = orderedPlayers(state).find((player) => player.roleId === roleId);
+  const add = (roleId: RoleId, spec: StepSpec, actorOverride: Player | null = null) => {
+    const actor =
+      actorOverride || orderedPlayers(state).find((player) => player.roleId === roleId) || null;
     if (!actor || !stepAllowed(state, roleId, actor, night)) return;
     // The queue orders by the compressed sequence index, not the printed
     // 0-99 sheet number. A role without a slot wakes after the last step.
@@ -1248,28 +1379,30 @@ export function appendSvConditionalSteps(state: GameState) {
   };
   const sweetheart = orderedPlayers(state).find((player) => player.roleId === "sweetheart");
   if (sweetheart && !sweetheart.alive && diedRecently(state, sweetheart.id)) {
-    add("sweetheart", { targetMode: "one-any", infoKind: "note" });
+    add("sweetheart", DEATH_WAKE_SPECS.sweetheart!);
   }
   const barber = orderedPlayers(state).find((player) => player.roleId === "barber");
   if (barber && !barber.alive && diedRecently(state, barber.id)) {
-    add("barber", { targetMode: "two", optional: true, infoKind: "note" });
+    add("barber", DEATH_WAKE_SPECS.barber!);
   }
   const sage = orderedPlayers(state).find((player) => player.roleId === "sage");
   if (sage && !sage.alive && diedByDemon(state, sage.id)) {
-    add("sage", { targetMode: "none", infoKind: "note" });
+    add("sage", DEATH_WAKE_SPECS.sage!);
   }
   const klutz = orderedPlayers(state).find((player) => player.roleId === "klutz");
   if (klutz && !klutz.alive && diedRecently(state, klutz.id) && !(klutz.used && klutz.used.klutz)) {
-    add("klutz", { targetMode: "one-any", infoKind: "note" });
+    add("klutz", DEATH_WAKE_SPECS.klutz!);
   }
   // A Philosopher who borrowed a death-triggered ability wakes for it after
-  // their own death, because their character is still the Philosopher.
+  // their own death, because their character is still the Philosopher. The
+  // borrowed character has no wake slot of its own, so the step is built here.
   for (const player of orderedPlayers(state)) {
-    const step = philosopherAbilityStep(state, player);
-    if (!step) continue;
-    if (!["barber", "sweetheart", "sage"].includes(step.roleId || "")) continue;
-    if (queue.some((candidate) => candidate.key === step.key)) continue;
-    insertStepInto(queue, step);
+    if (player.roleId !== "philosopher") continue;
+    const ability = player.used ? player.used.philosopherAbility : null;
+    if (typeof ability !== "string") continue;
+    const spec = DEATH_WAKE_SPECS[ability];
+    if (!spec) continue;
+    add(ability as RoleId, spec, player);
   }
 }
 

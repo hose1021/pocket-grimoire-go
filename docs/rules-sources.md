@@ -90,8 +90,9 @@ automatic role or win resolution.
    play. The player sees only the shown role. The night step follows the shown
    role, but the ability never works. The host may give false information.
 4. **Poison.** A Poisoner target is poisoned for that night and the next day.
-   The effect ends at the next dusk, when the Poisoner loses the ability, or
-   when the Poisoner dies. The app stores source, target, start and expiry, and
+   The effect ends at the next dusk, when the Poisoner loses the ability, when
+   the Poisoner dies, or when the Poisoner becomes the Demon (there is then no
+   Poisoner in play). The app stores source, target, start and expiry, and
    checks the source's live and sober state dynamically.
 5. **Monk.** The Monk cannot choose themself. Protection lasts tonight and ends
    at dawn or when the Monk loses the ability or dies. It stops the Demon, not
@@ -283,11 +284,13 @@ deaths and resurrections in the night card's outcome panel.
   after its death and choice; Exorcist skips the chosen Demon's wake.
 - Protections: Assassin bypasses Fool, Soldier, Sailor, Tea Lady, Innkeeper and
   Devil's Advocate; Zombuul's first death is replaced even by the Assassin.
-  The Devil's Advocate protects against the next day's execution. The Fool's
-  first death is prevented and spends the ability. The Zombuul stays alive but
-  registers as dead. The Tea Lady protects both neighbours while both are good;
-  the Innkeeper protects its two targets for the night; the Sailor cannot die
-  while sober and healthy.
+  The Devil's Advocate protects against the next day's execution. The Tea Lady
+  and Innkeeper protections resolve before the Fool, so the Fool's first death
+  is prevented and spends the ability only when the Fool was the reason. The
+  Zombuul stays alive but registers as dead, and a Death entry is recorded for
+  that day so it does not wake. The Tea Lady protects both neighbours while both
+  are good; the Innkeeper protects its two targets for the night; the Sailor
+  cannot die while sober and healthy from any cause, including an execution.
 - The Minstrel makes every other living player drunk until dusk tomorrow when
   a Minion dies by execution.
 - The Mastermind triggers when the Demon dies by execution: the game gets one

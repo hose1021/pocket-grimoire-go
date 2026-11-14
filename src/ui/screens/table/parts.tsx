@@ -4,7 +4,7 @@ import type { GameState, Player } from "../../../core/model/types.ts";
 import { seatProjection } from "../../../application/read-models/table.ts";
 import type { PreviewOutcome } from "../../ports.ts";
 import type { ShellPorts } from "../../ports.ts";
-import { consequencesOf, displayName, rejectionOf, targetNames } from "./helpers.ts";
+import { consequencesOf, displayName, rejectionOf, rejectionText, targetNames } from "./helpers.ts";
 import {
   ALERT,
   ALERT_BAD,
@@ -29,15 +29,19 @@ export function ConsequenceList({
   targets,
   state,
   ports,
+  rejectionCopy,
 }: {
   outcome: PreviewOutcome | null;
   targets: string[];
   state: GameState;
   ports: ViewPorts;
+  /** A command-specific sentence that replaces the generic `error.N` copy. */
+  rejectionCopy?: string | undefined;
 }) {
   const t = ports.strings.t;
   const lines = consequencesOf(outcome, targets).slice(0, 4);
   const rejection = rejectionOf(outcome);
+  const reason = rejectionCopy || rejectionText(rejection, t);
   return (
     <div className="grid gap-0.5" data-preview>
       <span className="text-[8px] font-semibold uppercase tracking-[.16em] text-brass">
@@ -48,9 +52,7 @@ export function ConsequenceList({
           className={`${ALERT} ${ALERT_BAD} m-0 px-1.5 py-1 text-[10.5px] leading-tight`}
           data-preview-reason
         >
-          {rejection.code === "error.66"
-            ? t("ui.madnessTransitionBlock")
-            : rejection.text || t("setupErrors")}
+          {reason}
         </p>
       ) : null}
       {lines.length ? (

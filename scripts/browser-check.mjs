@@ -130,14 +130,14 @@ async function overflow() {
 // Issue #143: a role card must show its complete role. The ability text comes
 // from the loaded catalog, no clamp applies, and the card grows instead of
 // clipping the text.
-async function sheetLegibility(widths) {
+async function sheetLegibility(widths, expected = 77) {
   for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(80);
     assert.equal(
       await page.locator(".sheet-role").count(),
-      77,
-      `${width}px: 72 standard roles and 5 Travellers are present`,
+      expected,
+      `${width}px: every standard role and Traveller is present`,
     );
     const problems = await page.evaluate(() => {
       const abilityById = new Map(
@@ -1565,7 +1565,7 @@ try {
     return store.state.notes === "Browser verification";
   });
   await page.locator('[data-act="close"]:visible').first().click();
-  await page.locator('[data-act="day-help"]').click();
+  await page.locator('[data-act="menu"]').click();
   assert.equal(
     await page.locator("[data-winner-team]").count(),
     1,
@@ -2264,7 +2264,7 @@ try {
     });
     store.replaceState(next);
   });
-  await page.locator('[data-act="day-help"]').click();
+  await page.locator('[data-act="menu"]').click();
   await page.waitForSelector('[data-madness-review] [data-madness-status="pending"]');
   assert.match(
     await page.locator("[data-preview-reason]").textContent(),
@@ -2944,20 +2944,20 @@ try {
     await page.waitForSelector(".sheet-travellers");
     assert.equal(
       await page.locator(".sheet-travellers .sheet-role").count(),
-      5,
-      `${code}: five Travellers`,
+      15,
+      `${code}: every scenario's five Travellers`,
     );
     assert.equal(
       await page.locator(".sheet-role").count(),
-      77,
-      `${code}: 72 standard roles and 5 Travellers`,
+      87,
+      `${code}: 72 standard roles and 15 Travellers`,
     );
     assert.equal(
       await page.locator(".sheet-sections > .sheet-team").count(),
       4,
       `${code}: Travellers stay separate`,
     );
-    await sheetLegibility([320, 360, 390, 768, 1280, 1440]);
+    await sheetLegibility([320, 360, 390, 768, 1280, 1440], 87);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(60);
     await overflow();
