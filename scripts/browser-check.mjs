@@ -3187,7 +3187,12 @@ try {
   const settle = async (target, cache) => {
     let stable = 0;
     let previous = -1;
-    for (let attempt = 0; attempt < 150; attempt += 1) {
+    let lastVersion = null;
+    let lastLoads = null;
+    // A cold CI runner can spend half a minute on the worker swap and the
+    // reload that follows it, so the window is generous; the contract (the
+    // page runs `cache` and stops reloading) is unchanged.
+    for (let attempt = 0; attempt < 450; attempt += 1) {
       let version = null;
       let loads = null;
       try {
@@ -3196,6 +3201,8 @@ try {
       } catch {
         /* a navigation is in flight */
       }
+      if (version !== null) lastVersion = version;
+      if (loads !== null) lastLoads = loads;
       if (version === cache && loads !== null && loads === previous) {
         stable += 1;
         if (stable >= 2) return loads;
@@ -3205,7 +3212,9 @@ try {
       if (loads !== null) previous = loads;
       await target.waitForTimeout(200);
     }
-    throw new Error(`the page never settled on ${cache}`);
+    throw new Error(
+      `the page never settled on ${cache}; last worker ${lastVersion}, loads ${lastLoads}`,
+    );
   };
 
   await page.setViewportSize({ width: 390, height: 844 });
