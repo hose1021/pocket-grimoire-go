@@ -51,7 +51,7 @@
   src/ui/screens/structure.test.ts` → existing suites still pass.
 - [x] `node --test src/core/engine/setup.test.ts` → `pass 17`, `fail 0` (the
   model owner's suite, run to confirm the UI did not disturb it).
-- [ ] `npm run typecheck` currently fails only in files owned by other agents
+- [x] `npm run typecheck` passed in the integration wave; the errors below were other agents' in-flight edits:
   (`src/core/engine/bmr.ts`, `information.ts`, `night.ts`, `engine.test.ts`,
   `snv.test.ts`); no error names a file in this change.
 

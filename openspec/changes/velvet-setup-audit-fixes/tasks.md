@@ -73,7 +73,7 @@
 - [x] `node --test src/core/model/presets.test.ts` → `pass 11`, `fail 0`
   (after the owner added `lunaticShownId: bag.lunaticShownId` to the test's
   `bagErrors` call, which SET6 requires).
-- [ ] `src/core/engine/snv.test.ts` keeps one failure:
+- [x] `src/core/engine/snv.test.ts` kept one failure:
   `the Vigormortis -1 Outsider choice is rejected when there is no Outsider to
   remove`. Its bag (Fang Gu plus Vigormortis at seven players) contradicts SET2
   and the Vigormortis setup rule; the Sects & Violets owner rewrites it.
@@ -93,20 +93,9 @@
 
 ## 5. Hand-off to other owners
 
-- [ ] `src/ui/screens/secrets.tsx`: offer the zero answer for a Drunk shown the
-  Librarian (`secrets.tsx` computes `zero = !forDrunk && roleId === "librarian"`).
-- [ ] `src/ui/screens/secrets.tsx`: offer not-in-play characters held by a
-  registering Spy or Recluse in the first-night role selector (the engine now
-  accepts them; the select still lists only characters held by players).
-- [ ] `src/ui/screens/secrets.tsx`: render `ROLE_REMINDERS_RU` in the Bad Moon
-  Rising and Sects & Violets panes. The panes return before the checklist
-  (`secrets.tsx:185`, `235`, `439-441`); the engine data for all 50 roles now
-  exists.
-- [ ] `src/ui/screens/setup-messages.ts`: `setupProblemText` still ignores
-  `problem.vars`. Merge it into the `setupProblemKey` context
-  (`vars: { ...problem.vars, ...context.vars }`) so the engine values reach `t()`;
-  `SetupProblem` there needs the optional `vars` field too.
-- [ ] `src/ui/screens/bag.tsx`: no change needed for SET5; `applyBag` already
-  copies `bag.godfatherOutsider`.
-- [ ] `src/ui/screens/seat.tsx`, `sheet.tsx`: out of scope for this change
-  (SET8/SET11 belong to the UI/audit wave).
+- [x] `src/ui/screens/secrets.tsx`: offers the zero answer through `librarianZeroLegal` and `[data-info-zero]`; the `setup-legal-bags` game asserts it.
+- [x] `src/ui/screens/secrets.tsx`: `infoRoleChoices` offers the not-in-play characters held by a registering Spy or Recluse; the `setup-legal-bags` game asserts the pair.
+- [x] `src/ui/screens/secrets.tsx`: renders `ROLE_REMINDERS_RU` for all three scripts through `[data-reminders]`; the `setup-legal-bags` game compares the rows to the engine data.
+- [x] `src/ui/screens/setup-messages.ts`: merges `problem.vars` into the `setupProblemKey` context and refuses an unfilled placeholder; `setup-messages.test.ts` covers both.
+- [x] `src/ui/screens/bag.tsx`: confirmed SET5 needs no change; `applyBag` copies `bag.godfatherOutsider`.
+- [x] `src/ui/screens/seat.tsx`, `sheet.tsx`: landed in the UI wave — `/seat` is names-only and the sheet shows each scenario's own Travellers; the `privacy` and browser checks assert both.

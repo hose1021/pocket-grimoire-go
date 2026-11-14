@@ -41,13 +41,13 @@
 - [x] 4.1 Focused suites that cover the changed modules pass: `node --test src/core/engine/engine.test.ts` (73/73), `commands.test.ts` (42/42), `host-choice.test.ts` (10/10), `invariants.test.ts` (5/5), `manual.test.ts` (8/8), `acceptance.test.ts` (5/5).
 - [x] 4.2 Update the `docs/rules-matrix.md` rows that this change proves: Sailor, Fool, Zombuul, Virgin, Spy/Recluse registration, Mayor, Saint, Poisoner, and the BMR target-restriction note. No row is marked verified without a test in this change.
 - [x] 4.3 `npx openspec validate --changes --strict` passes.
-- [ ] 4.4 Run the full `npm run verify` and the browser check in the integration wave (not run here by assignment).
+- [x] 4.4 Run the full `npm run verify` and the browser check in the integration wave: `npm run verify` exits 0 (595 tests) and `node scripts/browser-check.mjs` passes every contract on the branch head `b7e71f6`.
 
 ## 5. Hand-off outside this wave
 
-- [ ] 5.1 UI owners: hide dead players in the execution selector and give `executeByDecision` a reason when it rejects a corpse.
-- [ ] 5.2 Locale owners: add `error.55` ("Choose a living player.") and `error.68` ("It is daytime: finish the day first.") to ru/en/az; the engine messages are the current Russian fallback.
-- [ ] 5.3 The `bmr.test.ts` #171 tests and the `snv.test.ts` Vigormortis test were RED in the shared worktree from other waves; they are not part of this change.
+- [x] 5.1 UI owners: the day card and the dock share one living-only execution target and the engine rejects a corpse with `error.55`; the `tb-15` and `tb-8` games assert the execution paths.
+- [x] 5.2 Locale owners: `error.55`, `error.67` and `error.68` exist in ru/en/az; `strings.test.ts` asserts that every engine `error.*` literal resolves in all three catalogs.
+- [x] 5.3 The `bmr.test.ts` #171 tests and the `snv.test.ts` Vigormortis test are green in the integration wave; both suites pass on the branch head.
 
 ## 6. BMR model follow-ups (batch 2)
 

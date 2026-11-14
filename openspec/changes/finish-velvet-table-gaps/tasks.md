@@ -72,7 +72,7 @@
   - `SPEC.md` now records the new badges, the effect source, the dawn readout, the day-help split, the victory copy, the one-warning rule, the Drunk-mask section and the atomic stepper; the four OpenSpec checks pass.
 - [x] 7.7 Smoke the changed routes at 1440 and 390 px; check the browser console and the public/player privacy projections.
   - GREEN: the browser check runs the route smoke, captures `/table` at 1440/390 and checks the public/player projections with no page errors.
-- [ ] 7.8 Commit, push the branch and open the pull request with the RED and GREEN evidence; the owner decides the merge. Do not merge.
+- [x] 7.8 Committed and pushed on `feat/velvet-table-console`; pull request #169 carries the RED and GREEN evidence. The owner decides the merge; not merged.
 
 ## Evidence
 

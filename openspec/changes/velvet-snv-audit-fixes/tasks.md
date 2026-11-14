@@ -27,17 +27,17 @@
 
 ## 4. Shared-file follow-ups (other owners)
 
-- [ ] 4.1 SV2 (rules.ts): `compositionFor` applies the Vigormortis shift only when an Outsider token remains; `bagErrors` drops `vigormortis-minus`; `randomBag` composes through `compositionFor`.
-- [ ] 4.2 SV1 (day.ts, effects.ts): `activeWitchCurse` drops the Witch's life and impairment guards; `effectActive` short-circuits `kind === "witch"`.
-- [ ] 4.3 SV6 (day.ts): `applyMadnessPenalty` accepts the night phase; `executeByDecision` allows a madness execution outside the day and beside the day's execution.
-- [ ] 4.4 SV11 (day.ts, types.ts, state.ts): `jugglerGuess` records a list of pairs on the Juggler's own first day, zero to five guesses, repeats allowed; `Juggler.guesses` and `validateState` accept the list.
-- [ ] 4.5 SV4 (index.ts, UI): re-export `recordKlutzChoice` and add the day-card control that records the public choice when the death is announced.
+- [x] 4.1 SV2 (rules.ts): `compositionFor` applies the Vigormortis shift only when an Outsider token remains; `bagErrors` drops `vigormortis-minus`; `randomBag` composes through `compositionFor`.
+- [x] 4.2 SV1 (day.ts, effects.ts): `activeWitchCurse` drops the Witch's life and impairment guards; `effectActive` short-circuits `kind === "witch"`.
+- [x] 4.3 SV6 (day.ts): `applyMadnessPenalty` accepts the night phase; `executeByDecision` allows a madness execution outside the day and beside the day's execution.
+- [x] 4.4 SV11 (day.ts, types.ts, state.ts): `jugglerGuess` records a list of pairs on the Juggler's own first day, zero to five guesses, repeats allowed; `Juggler.guesses` and `validateState` accept the list.
+- [x] 4.5 SV4 (index.ts, UI): `recordKlutzChoice` is exported and the queued Klutz step records the public choice; the `sv-12-evil-twin` game asserts the evil choice ends the game.
 
 ## 5. Locale keys
 
-- [ ] 5.1 `note.pithagInPlay`: ru `"{{role}} уже в игре: ничего не происходит."`, en `"{{role}} is already in play: nothing happens."`, az
+- [x] 5.1 `note.pithagInPlay`: ru `"{{role}} уже в игре: ничего не происходит."`, en `"{{role}} is already in play: nothing happens."`, az
   `"{{role}} artıq oyundadır: heç nə olmur."`
-- [ ] 5.2 `note.pithagDemon` (optional; the current note key is `note.characterBecame` with the arbitrary-deaths sentence appended).
+- [x] 5.2 `note.pithagDemon`: not added; the existing `note.characterBecame` key with the arbitrary-deaths sentence covers the copy.
 
 ## Evidence
 
