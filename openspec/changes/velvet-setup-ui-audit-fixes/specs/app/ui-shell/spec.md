@@ -94,6 +94,12 @@ selector.
   is dealt
 - **THEN** the pane lists the Storyteller reminders of every role in play
 
+#### Scenario: Drunk mask label
+
+- **WHEN** the Drunk is in play
+- **THEN** the mask editor states that it sets the Drunk's shown role and is not
+  part of the Demon bluff group
+
 ### Requirement: Bag editor
 
 The bag screen SHALL edit the script pool, the player count, the roles, the
@@ -150,3 +156,9 @@ script switch, a cancelled confirmation or a rejected command.
 - **WHEN** the host activates the count stepper
 - **THEN** the count moves by exactly one, and a cancelled confirmation or a
   rejected command leaves it where it was
+
+#### Scenario: Count stepper after a script switch
+
+- **WHEN** the host switches to Bad Moon Rising and activates the increase
+  control twice quickly
+- **THEN** the count rises by exactly two from its previous value
