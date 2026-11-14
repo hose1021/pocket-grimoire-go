@@ -131,7 +131,9 @@ export async function prepareOffline(): Promise<void> {
       for (const worker of [reg.installing, reg.waiting]) if (worker) automatic.add(worker);
     };
     watch(reg.installing);
-    reg.addEventListener("updatefound", () => watch(reg.installing));
+    // An install can finish before this event is delivered, which leaves
+    // `installing` empty while the worker already waits.
+    reg.addEventListener("updatefound", () => watch(reg.installing ?? reg.waiting));
 
     // The opening check keeps the app current: it runs before the throttle, and
     // the worker it installs activates without a prompt.
