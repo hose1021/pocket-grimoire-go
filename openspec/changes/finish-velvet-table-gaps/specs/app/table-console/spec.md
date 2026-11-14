@@ -1,5 +1,12 @@
 # Spec Delta
 
+## Purpose
+
+Defines the Storyteller's table window: the seat ring and the state it carries,
+the fixed action dock and the engine guidance it surfaces, the vote threshold
+and dawn report, and the full-screen player card. The table is the primary
+surface for reading and driving a game, on a desktop and a phone.
+
 ## ADDED Requirements
 
 ### Requirement: Scheduled deaths on the ring

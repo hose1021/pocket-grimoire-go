@@ -1,5 +1,9 @@
 # Spec Delta
 
+## Purpose
+
+Defines the Bad Moon Rising engine behavior the console relies on: printed target restrictions, conditional wakes, host-marked outcomes, death prevention, and the support status of the audited roles.
+
 ## ADDED Requirements
 
 ### Requirement: Printed target restrictions

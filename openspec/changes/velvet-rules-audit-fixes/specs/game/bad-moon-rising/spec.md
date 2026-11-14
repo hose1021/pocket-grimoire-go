@@ -4,13 +4,12 @@
 
 ### Requirement: Death prevention and bypass
 
-The engine SHALL resolve protection deterministically: the Assassin bypasses
-Fool, Sailor, Tea Lady, Innkeeper and Devil's Advocate protection; the Zombuul
-replaces its first death and registers as dead while sober; an impaired Zombuul
-dies normally. The Tea Lady and Innkeeper protections SHALL resolve before the
-Fool's ability, so the Fool's once-per-game ability is spent only when the Fool
-prevented the death. The Zombuul's replaced death SHALL be recorded as a Death
-entry for that day while the player stays alive.
+The engine SHALL resolve protection deterministically. The Assassin SHALL bypass
+Fool, Sailor, Tea Lady, Innkeeper and Devil's Advocate protection. A sober
+Zombuul SHALL replace its first death, register as dead and record a Death entry
+while staying alive; an impaired Zombuul SHALL die normally. Tea Lady and
+Innkeeper protection SHALL resolve before the Fool, so the Fool's ability is
+spent only when it prevented the death.
 
 **Source**: [Assassin r1786](https://wiki.bloodontheclocktower.com/index.php?title=Assassin&oldid=1786), [Fool r2636](https://wiki.bloodontheclocktower.com/index.php?title=Fool&oldid=2636), [Zombuul r3022](https://wiki.bloodontheclocktower.com/index.php?title=Zombuul&oldid=3022), [Tea Lady r1777](https://wiki.bloodontheclocktower.com/index.php?title=Tea_Lady&oldid=1777), [Innkeeper r3129](https://wiki.bloodontheclocktower.com/index.php?title=Innkeeper&oldid=3129)
 **Tests**: `src/core/engine/bmr.test.ts`, `src/core/engine/engine.test.ts`

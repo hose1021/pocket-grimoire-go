@@ -4,13 +4,11 @@
 
 ### Requirement: Seat order draft
 
-The seat screen SHALL keep the seat order as a local draft: selecting two seats
-SHALL swap them, dragging a seat onto another SHALL swap them, and shuffle and
-undo SHALL change only the draft. The draft SHALL be committed only by the use
-action. A published state SHALL update the names on the ring, SHALL NOT replace
-a non-empty draft, and SHALL fill an empty draft. The ring, the sidebar and the
-drag ghost SHALL show player names and seat numbers only; no real role, shown
-role, team or alive state SHALL be rendered on this route.
+The seat screen SHALL keep the seat order as a local draft: selecting or dragging
+one seat onto another SHALL swap them, shuffle and undo SHALL change only the
+draft, and the use action SHALL commit it. A published state SHALL update the
+names on the ring without replacing a non-empty draft. The ring, the sidebar and
+the drag ghost SHALL show player names and seat numbers only.
 
 **Source**: `SPEC.md` "Screens" and `/seat` "names only"; issue #82; issue #171
 SET8
@@ -42,14 +40,10 @@ SET8
 
 The secrets screen SHALL edit the one-of-two pairs, the Drunk mask pair and the
 red herring through commands, SHALL list the reminders and the host-only roster,
-and SHALL start the first night only when the secrets are complete. Bad Moon
-Rising and Sects & Violets SHALL render their own setup summaries and the same
-reminder checklist for the roles in play. A manual script SHALL render the
-manual pane even when its pool contains Bad Moon Rising or Sects & Violets
-roles. The Librarian's zero answer SHALL be selectable whenever the engine
-accepts it, including for a Drunk shown the Librarian, and a registering Spy or
-Recluse SHALL add the not-in-play characters of the needed team to the role
-selector.
+and SHALL start the first night only when the secrets are complete. Each script
+SHALL render its own setup summary and reminder checklist, a manual script SHALL
+render the manual pane, and the Librarian zero and a registering Spy or Recluse
+SHALL extend the offered answers as the scenarios describe.
 
 **Source**: `SPEC.md` `/secrets`; issue #82; issue #171 SET9, SET10, TB2, TB8
 **Tests**: `scripts/browser-check.mjs`, `src/ui/screens/secrets-options.test.ts`,
@@ -103,16 +97,10 @@ selector.
 ### Requirement: Bag editor
 
 The bag screen SHALL edit the script pool, the player count, the roles, the
-bluffs and the special setup choices through one bag command, SHALL offer the
-recommended presets, the random picker, the manual picker, the named library and
-the import/export paths, and SHALL deal the bag only when it is legal. The
-manual picker SHALL list every role of the selected script grouped by team and
-SHALL NOT offer a search field or edition and team filters. A rejected saved bag
-or pool load SHALL keep the library open, show the rejection reason in the UI
-language and leave the published state unchanged. The random picker and the
-script switch SHALL apply the Godfather direction the bag was composed for. The
-count stepper SHALL move exactly one player per activation, including after a
-script switch, a cancelled confirmation or a rejected command.
+bluffs and the setup choices through one bag command, and SHALL deal only a legal
+bag. It SHALL offer the presets, the random picker, the manual picker, the named
+library and import/export. A rejected load SHALL stay open and explain itself;
+the count stepper SHALL move one player per activation.
 
 **Source**: `SPEC.md` `/bag`; issue #82; owner requirement "manual assembly groups roles"; issue #171 SET5, SET7
 **Tests**: `scripts/browser-check.mjs`, `src/ui/screens/setup-messages.test.ts`
