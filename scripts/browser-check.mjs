@@ -572,13 +572,30 @@ try {
 
   // Identity: the shell, the manifest and every header name Grimoria.
   assert.equal(await page.title(), "Grimoria", "document title");
+  const identityManifestUrl = new URL("manifest.webmanifest", url).href;
   const identityManifest = await page.evaluate(async (href) => {
     const response = await fetch(href);
     return { ok: response.ok, body: await response.json() };
-  }, new URL("manifest.webmanifest", url).href);
+  }, identityManifestUrl);
   assert.equal(identityManifest.ok, true, "manifest loads");
   assert.equal(identityManifest.body.name, "Grimoria", "manifest name");
   assert.equal(identityManifest.body.short_name, "Grimoria", "manifest short name");
+  // Chrome installs the app only with a raster icon at each required size.
+  for (const size of [192, 512]) {
+    const icon = (identityManifest.body.icons ?? []).find((entry) =>
+      String(entry.sizes ?? "")
+        .split(/\s+/)
+        .includes(`${size}x${size}`),
+    );
+    assert.ok(icon, `manifest declares a ${size}x${size} icon`);
+    assert.equal(icon.type, "image/png", `${size}x${size} icon is a PNG`);
+    const iconResponse = await page.evaluate(async (href) => {
+      const response = await fetch(href);
+      return { status: response.status, type: response.headers.get("content-type") ?? "" };
+    }, new URL(icon.src, identityManifestUrl).href);
+    assert.equal(iconResponse.status, 200, `${size}x${size} icon resolves`);
+    assert.match(iconResponse.type, /^image\/png/, `${size}x${size} icon is served as PNG`);
+  }
   assert.equal(
     (await page.locator(".setup-brand").innerText()).includes("PG"),
     false,

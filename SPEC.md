@@ -17,8 +17,9 @@ profile.
   `@tailwindcss/vite` without Preflight, and the one `@theme` block in
   `css/app.css` is the only token source.
 - `window.PG.roles` is the catalog. Static assets (`assets/`, `favicon.svg`,
-  `manifest.webmanifest`, `.nojekyll`) live in `public/` and are copied
-  verbatim into `dist/`.
+  `icon-192.png`, `icon-512.png`, `manifest.webmanifest`, `.nojekyll`) live in
+  `public/` and are copied verbatim into `dist/`. The two PNG icons are renders
+  of `favicon.svg` and satisfy Chrome's install icon sizes.
 - The base path is one normalized `BASE_PATH`: it feeds Vite, the router root,
   the generated `404.html` and the worker registration.
 - Routes are paths: `/bag`, `/seat`, `/secrets`, `/table`, `/player`,
